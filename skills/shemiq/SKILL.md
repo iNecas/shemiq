@@ -8,6 +8,18 @@ Shemiq is a tool and file format for keeping track of the tasks by leveraging ap
 
 It uses ``:::shemiq` markdown directive to keep metatada about the tasks and links between them.
 
+## Installing and locating the CLI
+
+Some usage scenarios involve using the `shemiq` command. If the command is not present, follow the following steps:
+
+- Locate the *loaded* `skills/shemiq/SKILL.md` in the Shemiq repository (not the target project). The repository root is two directories above that skill file. Run `make install` from that root; if it fails, report the error and stop. Return to the original working directory afterward.
+- Use `shemiq` if it is on `PATH`. Otherwise invoke the installed executable directly: use `$(go env GOBIN)/shemiq` when `GOBIN` is nonempty, or `<first entry of go env GOPATH>/bin/shemiq` when it is empty. If the executable cannot be found or run, report the problem. No `PATH` change is required.
+
+## Creating a top-level task with the CLI
+
+- From the **target project's working directory**, run `shemiq task new --title <one-line title> <original description>` using the executable located above. Pass the whole description as **one safely shell-quoted argument** and quote the title too. The CLI discovers the nearest `.shemiq/` upwards or creates one in the working directory, derives the slug from the title, writes `.shemiq/tasks/<slug>/top-level.md`, rejects collisions, and prints the absolute file path. Report that printed path on success; surface CLI errors without guessing a path or creating the file manually.
+- This CLI creates **top-level tasks only**. For subtasks, metadata edits, and other document changes, use the format below; do not claim `task new` supports them.
+
 ## Common structure
 
 ### Top level tasks

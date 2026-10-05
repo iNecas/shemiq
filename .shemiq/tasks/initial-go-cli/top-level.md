@@ -30,7 +30,7 @@ Shemiq tracks work in Markdown under `.shemiq/tasks/`, using `:::shemiq` directi
 
 ## Current status
 
-The initial Go CLI implements `shemiq task new <description...>` with a prompted title, ASCII slug generation, upward project discovery, top-level document creation, collision protection, and focused command tests. The executable remains at the module root; the Cobra commands and tests now live in `cmd`, while reusable project discovery and task creation live in `internal/task`. Title collection remains separate from file creation for future agent integration. `task new` now also accepts `--title` to create a task without prompting; omitting the flag retains the interactive behavior. Flag titles must be nonblank and one line.
+The initial Go CLI implements `shemiq task new <description...>` with a prompted title, ASCII slug generation, upward project discovery, top-level document creation, collision protection, and focused command tests. The executable remains at the module root; the Cobra commands and tests now live in `cmd`, while reusable project discovery and task creation live in `internal/task`. Title collection remains separate from file creation for future agent integration. `task new` now also accepts `--title` to create a task without prompting; omitting the flag retains the interactive behavior. Flag titles must be nonblank and one line. The `/shemiq-new` prompt now uses the CLI instead of creating files manually, and the skill documents installation and the executable fallback when `shemiq` is off `PATH`. A temporary-project smoke run confirmed the printed path and preserved description.
 
 ## Tasks
 
@@ -68,14 +68,11 @@ the info on command line.
 :::shemiq
 type: task
 source: ./update-prompts-and-skills.md
-status: new
+status: done
 :::
 
 prompts/shemiq-new.md is the counterpart of the `shemiq task new`. Let's make
 it more deterministic by using the binary for actual task creation.
 
-`task new --title` is now available for a non-interactive prompt workflow; this task still needs to update the prompt and skill.
-
-The skill in skills/shemiq/SKILL.md should be expanded for the awareness
-of the binary and to use `make install` in the repo dir in case the binary is
-not available.
+The prompt uses `task new --title` for non-interactive creation; the skill explains
+how to install and locate the binary when it is not on `PATH`.

@@ -2,7 +2,7 @@
 :::shemiq
 type: task
 parent: ./top-level.md
-status: new
+status: done
 :::
 
 ## Context
@@ -20,3 +20,9 @@ status: new
 - Update `prompts/shemiq-new.md` to have the agent choose a concise one-line title, pass it via `--title`, and pass the user's original description as a single safely quoted argument. Run the CLI from the target project's working directory; let it derive the slug, discover or create `.shemiq/`, generate the document and detect collisions. Use the path printed on success to tell the user where the task is; surface errors rather than guessing a path or manually creating the file.
 - Expand `skills/shemiq/SKILL.md` with concise guidance for finding/installing and using `shemiq task new`. Check `PATH` first; when missing, derive the repository from the loaded skill location and run `make install` there. Afterward use `shemiq` from `PATH` or the Go-installed binary location, then restore the target project's working directory before invoking it. Keep the existing document-format guidance for operations the CLI does not support; do not imply it can create subtasks.
 - Validate with one end-to-end smoke run from a temporary target project: confirm that the CLI prints a path and creates a top-level document with the original description. No new Go tests are necessary for prompt/skill text changes.
+
+## Implementation notes
+
+- Updated `prompts/shemiq-new.md` to request a one-line title, pass the complete original description as a single safely quoted argument to `shemiq task new --title`, and report only the CLI's printed path or error (no manual-file fallback).
+- Added CLI discovery, installation from the loaded skill's repository, Go binary path fallback, target-project working-directory guidance, and the top-level-only limitation to `skills/shemiq/SKILL.md`. Retained the document-format guidance for subtasks and edits.
+- Smoke-tested `make install` into a temporary Go binary directory and invoked the installed executable from a temporary project. It printed the expected absolute path and created a top-level document preserving a description containing both apostrophes and quotes. No new Go tests added.
