@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,9 +14,16 @@ const testUUID = "12345678-1234-4234-8234-123456789abc"
 func TestValidateScopeAndDuplicates(t *testing.T) {
 	project := t.TempDir()
 	dir := filepath.Join(project, ".shemiq")
-	a := writeTestMarkdown(t, filepath.Join(dir, "a.md"), ":::shemiq\nuuid: "+testUUID+"\n:::\n")
-	b := writeTestMarkdown(t, filepath.Join(dir, "nested", "b.md"), ":::shemiq\nuuid: "+testUUID+"\n:::\n")
-	writeTestMarkdown(t, filepath.Join(dir, "nested", "plain.md"), "No metadata\n")
+	withUUID := fmt.Sprintf(dedent(`
+		:::shemiq
+		uuid: %s
+		:::
+		`), testUUID)
+	a := writeTestMarkdown(t, filepath.Join(dir, "a.md"), withUUID)
+	b := writeTestMarkdown(t, filepath.Join(dir, "nested", "b.md"), withUUID)
+	writeTestMarkdown(t, filepath.Join(dir, "nested", "plain.md"), dedent(`
+		No metadata
+		`))
 	cwd := filepath.Join(project, "subdir")
 	if err := os.Mkdir(cwd, 0755); err != nil {
 		t.Fatal(err)
@@ -37,7 +45,14 @@ func TestValidateScopeAndDuplicates(t *testing.T) {
 
 func TestValidateFixPreservesBytesAndReportsRemainingErrors(t *testing.T) {
 	dir := t.TempDir()
-	path := writeTestMarkdown(t, filepath.Join(dir, "metadata.md"), "prefix\r\n    :::shemiq\r\n:::shemiq\r\nstatus: todo\r\n:::\r\nsuffix")
+	original := strings.ReplaceAll(dedent(`
+		prefix
+		    :::shemiq
+		:::shemiq
+		status: todo
+		:::
+		suffix`), "\n", "\r\n")
+	path := writeTestMarkdown(t, filepath.Join(dir, "metadata.md"), original)
 	t.Chdir(dir)
 	out, diag, err := runCommand("", "validate", "--fix", path)
 	if err == nil || out != "" || !strings.Contains(diag, path+":3: fixed: missing uuid") || !strings.Contains(diag, path+":4: invalid status: todo") || strings.Contains(diag, "Error:") {
@@ -47,8 +62,8 @@ func TestValidateFixPreservesBytesAndReportsRemainingErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pattern := regexp.MustCompile(`^prefix\r\n    :::shemiq\r\n:::shemiq\r\nstatus: todo\r\nuuid: [0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\r\n:::\r\nsuffix$`)
-	if !pattern.Match(content) {
+	uuidLine := regexp.MustCompile(`uuid: [0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}`).Find(content)
+	if uuidLine == nil || strings.Replace(string(content), string(uuidLine)+"\r\n", "", 1) != original {
 		t.Fatalf("unexpected repair: %q", content)
 	}
 	_, diag, err = runCommand("", "validate", path, "--fix")
@@ -70,7 +85,17 @@ func TestValidateFixPreservesBytesAndReportsRemainingErrors(t *testing.T) {
 
 func TestValidateSuccessfulFixAndSourceException(t *testing.T) {
 	dir := t.TempDir()
-	path := writeTestMarkdown(t, filepath.Join(dir, "task.md"), ":::shemiq\ntype: task\n:::\n:::shemiq\nstatus: progress\n:::\n:::shemiq\nsource: ./future.md\n:::\n")
+	path := writeTestMarkdown(t, filepath.Join(dir, "task.md"), dedent(`
+		:::shemiq
+		type: task
+		:::
+		:::shemiq
+		status: progress
+		:::
+		:::shemiq
+		source: ./future.md
+		:::
+		`))
 	t.Chdir(dir)
 	out, diag, err := runCommand("", "validate", path, "--fix")
 	if err != nil || out != "" || strings.Count(diag, "fixed: missing uuid") != 2 || strings.Contains(diag, "Error:") {
@@ -92,7 +117,26 @@ func TestValidateSuccessfulFixAndSourceException(t *testing.T) {
 
 func TestValidateInvalidMetadataAndReferences(t *testing.T) {
 	dir := t.TempDir()
-	original := ":::shemiq\ntype: other\nstatus: todo\nstatus: done\nunknown: x\nuuid: INVALID\nparent: ./missing.md\n:::\n:::shemiq\nsource: ./not-yet-written.md\n:::\n:::shemiq\nsource: ./later.md\nuuid: " + testUUID + "\n:::\n:::shemiq\nnot a field\n:::\n"
+	original := fmt.Sprintf(dedent(`
+		:::shemiq
+		type: other
+		status: todo
+		status: done
+		unknown: x
+		uuid: INVALID
+		parent: ./missing.md
+		:::
+		:::shemiq
+		source: ./not-yet-written.md
+		:::
+		:::shemiq
+		source: ./later.md
+		uuid: %s
+		:::
+		:::shemiq
+		not a field
+		:::
+		`), testUUID)
 	path := writeTestMarkdown(t, filepath.Join(dir, "bad.md"), original)
 	t.Chdir(dir)
 	out, diag, err := runCommand("", "validate", path, "--fix")
@@ -123,6 +167,17 @@ func TestValidateNoProject(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(dir, ".shemiq")); !os.IsNotExist(statErr) {
 		t.Fatalf("validation created project: %v", statErr)
 	}
+}
+
+// dedent removes the indentation of the first content line from each line.
+// A closing backtick on its own line leaves a trailing newline in the fixture.
+func dedent(content string) string {
+	lines := strings.Split(strings.TrimPrefix(content, "\n"), "\n")
+	indent := lines[0][:len(lines[0])-len(strings.TrimLeft(lines[0], " \t"))]
+	for i, line := range lines {
+		lines[i] = strings.TrimPrefix(line, indent)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func writeTestMarkdown(t *testing.T, path, content string) string {

@@ -13,6 +13,25 @@ import (
 
 var uuidV4 = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
+var knownMetadataFields = map[string]struct{}{
+	"type":   {},
+	"parent": {},
+	"source": {},
+	"status": {},
+	"uuid":   {},
+}
+
+var validTypes = map[string]struct{}{
+	"top-level": {},
+	"task":      {},
+}
+
+var validStatuses = map[string]struct{}{
+	"new":      {},
+	"progress": {},
+	"done":     {},
+}
+
 // Validate scans the selected Markdown files. An empty path selects the nearest
 // existing .shemiq directory; it never creates a project. Operational failures
 // are returned separately from metadata issues.
@@ -190,35 +209,43 @@ func validateDirective(path string, directive directive) ([]Issue, error) {
 	for _, key := range keys {
 		field := fields[key]
 		message := ""
-		switch {
-		case key != "type" && key != "parent" && key != "source" && key != "status" && key != "uuid":
+		if _, known := knownMetadataFields[key]; !known {
 			message = "unknown metadata field: " + key
-		case field.value == "":
+		} else if field.value == "" {
 			message = "empty metadata field: " + key
-		case key == "type" && field.value != "top-level" && field.value != "task":
-			message = "invalid type: " + field.value
-		case key == "status" && field.value != "new" && field.value != "progress" && field.value != "done":
-			message = "invalid status: " + field.value
-		case key == "uuid" && !uuidV4.MatchString(field.value):
-			message = "invalid UUIDv4: " + field.value
-		case key == "parent":
-			target := filepath.Join(filepath.Dir(path), field.value)
-			info, err := os.Stat(target)
-			if os.IsNotExist(err) || err == nil && !info.Mode().IsRegular() {
-				message = "parent is not an existing file: " + field.value
-			} else if err != nil {
-				return nil, fmt.Errorf("inspect parent %s: %w", target, err)
+		} else {
+			switch key {
+			case "type":
+				if _, valid := validTypes[field.value]; !valid {
+					message = "invalid type: " + field.value
+				}
+			case "status":
+				if _, valid := validStatuses[field.value]; !valid {
+					message = "invalid status: " + field.value
+				}
+			case "uuid":
+				if !uuidV4.MatchString(field.value) {
+					message = "invalid UUIDv4: " + field.value
+				}
+			case "parent":
+				target := filepath.Join(filepath.Dir(path), field.value)
+				info, err := os.Stat(target)
+				if os.IsNotExist(err) || err == nil && !info.Mode().IsRegular() {
+					message = "parent is not an existing file: " + field.value
+				} else if err != nil {
+					return nil, fmt.Errorf("inspect parent %s: %w", target, err)
+				}
 			}
 		}
 		if message != "" {
 			issues = append(issues, Issue{path, field.line, message, false})
 		}
 	}
-	_, source := fields["source"]
+	_, hasSource := fields["source"]
 	uuid, hasUUID := fields["uuid"]
-	if source && hasUUID {
+	if hasSource && hasUUID {
 		issues = append(issues, Issue{path, uuid.line, "source and uuid are mutually exclusive", false})
-	} else if !source && !hasUUID {
+	} else if !hasSource && !hasUUID {
 		issues = append(issues, Issue{path, directive.line, "missing uuid", false})
 	}
 	return issues, nil

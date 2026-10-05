@@ -2,8 +2,11 @@ package task
 
 import (
 	"bytes"
+	"regexp"
 	"strings"
 )
+
+var metadataKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
 
 // Issue is a validation finding. Fixed is true only when --fix inserted a UUID.
 type Issue struct {
@@ -65,7 +68,7 @@ func parseDocument(path string, data []byte) document {
 			current = nil
 		case current != nil:
 			key, value, ok := strings.Cut(text, ":")
-			if !ok || !validFieldKey(key) {
+			if !ok || !metadataKeyPattern.MatchString(key) {
 				current.parseable = false
 				doc.issues = append(doc.issues, Issue{path, line, "malformed metadata field", false})
 				break
@@ -84,19 +87,6 @@ func parseDocument(path string, data []byte) document {
 		doc.directives = append(doc.directives, *current)
 	}
 	return doc
-}
-
-func validFieldKey(key string) bool {
-	if key == "" {
-		return false
-	}
-	for i, c := range key {
-		letter := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
-		if !letter && (i == 0 || c != '-' && c != '_' && (c < '0' || c > '9')) {
-			return false
-		}
-	}
-	return true
 }
 
 func lineEnding(data []byte, before int) string {
