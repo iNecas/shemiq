@@ -1,4 +1,4 @@
-package main
+package task
 
 import (
 	"errors"
@@ -8,9 +8,27 @@ import (
 	"strings"
 )
 
-// createTopLevelTask writes a task independently of how its title was obtained.
+// FindProjectDirectory returns the nearest .shemiq directory, or the path
+// where one should be created if none exists above the invocation directory.
+func FindProjectDirectory(cwd string) (string, error) {
+	for dir := cwd; ; dir = filepath.Dir(dir) {
+		projectDir := filepath.Join(dir, ".shemiq")
+		info, err := os.Stat(projectDir)
+		if err == nil && info.IsDir() {
+			return projectDir, nil
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return "", fmt.Errorf("inspect %s: %w", projectDir, err)
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			return filepath.Join(cwd, ".shemiq"), nil
+		}
+	}
+}
+
+// CreateTopLevelTask writes a task independently of how its title was obtained.
 // projectDir is the path to the project's .shemiq directory.
-func createTopLevelTask(projectDir, description, title string) (string, error) {
+func CreateTopLevelTask(projectDir, description, title string) (string, error) {
 	if strings.TrimSpace(description) == "" {
 		return "", fmt.Errorf("description is required")
 	}
@@ -40,24 +58,6 @@ func createTopLevelTask(projectDir, description, title string) (string, error) {
 		return "", errors.Join(fmt.Errorf("write %s: %w", path, err), cleanupTask(path, taskDir))
 	}
 	return path, nil
-}
-
-// findProjectDirectory returns the nearest .shemiq directory, or the path
-// where one should be created if none exists above the invocation directory.
-func findProjectDirectory(cwd string) (string, error) {
-	for dir := cwd; ; dir = filepath.Dir(dir) {
-		projectDir := filepath.Join(dir, ".shemiq")
-		info, err := os.Stat(projectDir)
-		if err == nil && info.IsDir() {
-			return projectDir, nil
-		}
-		if err != nil && !os.IsNotExist(err) {
-			return "", fmt.Errorf("inspect %s: %w", projectDir, err)
-		}
-		if parent := filepath.Dir(dir); parent == dir {
-			return filepath.Join(cwd, ".shemiq"), nil
-		}
-	}
 }
 
 func taskSlug(title string) string {

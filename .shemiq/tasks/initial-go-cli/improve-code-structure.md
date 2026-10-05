@@ -2,7 +2,7 @@
 :::shemiq
 type: task
 parent: ./top-level.md
-status: new
+status: done
 :::
 
 ## Context
@@ -22,3 +22,9 @@ The initial `shemiq task new` command works, but its Cobra command and task crea
 - Move task operations into `internal/task`: nearest `.shemiq/` discovery, validation and ASCII slug generation, top-level document rendering, filesystem creation, collision protection, and best-effort cleanup. Provide a small API for the command to find the project directory and create a top-level task from a project directory, description, and title. Task operations must not depend on Cobra, stdin, or CLI output. Other task commands should be able to reuse project discovery; do not add a general task model, storage interface, or agent/provider abstractions in anticipation of future work.
 - Preserve the existing command contract: description arguments, stderr title prompt, error and usage output, absolute result path on stdout, Markdown structure, project discovery/creation, slug rules, input rejection, and collision behavior. This is a structural change only.
 - Move/adapt existing Cobra end-to-end tests to the command package, retaining temporary-directory checks for existing/new projects, invalid input, output/document content, and non-overwrite behavior. Add tests only for meaningful gaps exposed by the move. Verify `go test ./...`, `go vet ./...`, and a root build. The existing root `make build`/`make run` and `go install` entry points should keep working; update development documentation only if a documented instruction changes.
+
+## Implementation notes
+
+- Reduced root `main.go` to an executable that delegates to `cmd.Execute` and exits nonzero on command errors. `cmd` owns the Cobra tree, title prompt, argument handling, and CLI streams; its entry point accepts args and stdin/stdout/stderr so tests exercise the command directly.
+- Moved project discovery and top-level task creation into `internal/task`, exposing only `FindProjectDirectory` and `CreateTopLevelTask`. Kept validation, ASCII slug generation, document rendering, collision protection, and best-effort cleanup unchanged.
+- Moved the existing temporary-directory command tests to `cmd/root_test.go` without expanding the test suite. `go test ./...`, `go vet ./...`, `make build`, and a local `go install .` followed by a binary smoke check pass. No documented development command changed.

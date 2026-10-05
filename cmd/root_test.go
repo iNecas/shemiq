@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"bytes"
@@ -139,11 +139,6 @@ func TestTaskNewDoesNotOverwrite(t *testing.T) {
 
 func runCommand(input string, args ...string) (string, string, error) {
 	var stdout, stderr bytes.Buffer
-	cmd := newRootCommand(&stdout)
-	cmd.SetIn(strings.NewReader(input))
-	cmd.SetOut(&stderr)
-	cmd.SetErr(&stderr)
-	cmd.SetArgs(args)
-	err := cmd.Execute()
+	err := Execute(strings.NewReader(input), &stdout, &stderr, args)
 	return stdout.String(), stderr.String(), err
 }
