@@ -5,24 +5,40 @@ type: top-level
 
 ## Description
 
-initial go-lang CLI
+Build the initial Go CLI for Shemiq, starting with `shemiq task new` to create a top-level task.
 
 ## Context
 
-[TBD]
+Shemiq tracks work in Markdown under `.shemiq/tasks/`, using `:::shemiq` directives for task metadata. The README currently describes creating a top-level task by hand or through a Pi prompt; the CLI is listed as future work. The repository has a Go module but no Go implementation yet. The existing `.shemiq/tasks/initial-go-cli/top-level.md` illustrates the document structure to generate.
 
 ## Interview
 
-[TBD]
+- The first CLI feature is `shemiq task new`, creating only top-level tasks; subtask creation is out of scope.
+- The description is required on the command line as the remaining arguments after `shemiq task new`. The command prompts interactively for a one-line title. Missing description is a usage error.
+- Derive the task directory slug from the title; do not prompt for a slug or silently add a numeric suffix.
+- Look upward from the working directory for the nearest `.shemiq/`. If none exists, create `.shemiq/` in the working directory.
+- If the derived task directory already exists, fail without overwriting it.
+- Keep title collection separate from task creation so a future agent call can suggest the title from the supplied description. Agent integration is not part of this task.
 
 ## Design
 
-[TBD]
+- Implement a small Go CLI for `shemiq task new <description...>` without a general CLI or provider framework. Join the description arguments, prompt for a one-line title, validate the inputs, then pass the resulting data to task creation independently of how the title was obtained.
+- Find the project directory by walking up to the nearest `.shemiq/`; when absent, create one in the current directory. Create `.shemiq/tasks/<slug>/top-level.md` and print the resulting file path on success.
+- Generate a top-level Markdown document with the title, `type: top-level` directive, supplied `## Description`, and `[TBD]` in the Context, Interview, Design, Current status, and Tasks sections. Do not create subtasks or other project files.
+- Reject blank descriptions, blank titles or ended input, and titles that do not yield a nonempty filesystem-safe slug. Report collisions and filesystem errors clearly; avoid overwriting or leaving a partly written task.
+- Keep tests focused on the command's end-to-end creation behavior: existing project discovery from a nested directory, new `.shemiq/` creation, required input, and collision protection. No agent integration tests are needed.
 
 ## Current status
 
-[TBD]
+Only the Go module and task/prompt documentation exist; no CLI has been implemented yet.
 
 ## Tasks
 
-[TBD]
+### Implement `shemiq task new`
+:::shemiq
+type: task
+source: ./implement-task-new.md
+status: new
+:::
+
+Build the interactive Go command to create a top-level task from a command-line description and prompted title, with project discovery, validation, and focused tests.
