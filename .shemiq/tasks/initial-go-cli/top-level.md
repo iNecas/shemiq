@@ -22,10 +22,10 @@ Shemiq tracks work in Markdown under `.shemiq/tasks/`, using `:::shemiq` directi
 
 ## Design
 
-- Implement a small Go CLI for `shemiq task new <description...>` without a general CLI or provider framework. Join the description arguments, prompt for a one-line title, validate the inputs, then pass the resulting data to task creation independently of how the title was obtained.
-- Find the project directory by walking up to the nearest `.shemiq/`; when absent, create one in the current directory. Create `.shemiq/tasks/<slug>/top-level.md` and print the resulting file path on success.
+- Implement `shemiq task new <description...>` using Cobra for command routing, without a provider framework or extra extensibility scaffolding. Join the description arguments, prompt for a one-line title, validate the inputs, then pass the resulting data to task creation independently of how the title was obtained.
+- Find the project directory by walking up to the nearest `.shemiq/`; when absent, create one in the current directory. Create `.shemiq/tasks/<slug>/top-level.md` and print its absolute path on success. Derive the slug using lowercase ASCII letters and digits separated by hyphens.
 - Generate a top-level Markdown document with the title, `type: top-level` directive, supplied `## Description`, and `[TBD]` in the Context, Interview, Design, Current status, and Tasks sections. Do not create subtasks or other project files.
-- Reject blank descriptions, blank titles or ended input, and titles that do not yield a nonempty filesystem-safe slug. Report collisions and filesystem errors clearly; avoid overwriting or leaving a partly written task.
+- Reject blank descriptions, blank titles or ended input, and titles that do not yield a nonempty filesystem-safe slug. Report collisions and filesystem errors clearly; avoid overwriting and best-effort clean up a newly created task directory if its document write fails. Crash-safe atomicity is out of scope.
 - Keep tests focused on the command's end-to-end creation behavior: existing project discovery from a nested directory, new `.shemiq/` creation, required input, and collision protection. No agent integration tests are needed.
 
 ## Current status
