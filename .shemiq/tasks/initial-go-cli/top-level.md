@@ -65,6 +65,11 @@ Let's add `task new --title "The title" descriptino in the rest of args` to prov
 the info on command line.
 
 ### Update the prompts and skills to start using shemiq binary
+:::shemiq
+type: task
+source: ./update-prompts-and-skills.md
+status: new
+:::
 
 prompts/shemiq-new.md is the counterpart of the `shemiq task new`. Let's make
 it more deterministic by using the binary for actual task creation.
