@@ -36,7 +36,8 @@ func newRootCommand(result io.Writer) *cobra.Command {
 
 func newTaskCommand(result io.Writer) *cobra.Command {
 	taskCommand := &cobra.Command{Use: "task", Short: "Manage tasks"}
-	taskCommand.AddCommand(&cobra.Command{
+	var title string
+	newCommand := &cobra.Command{
 		Use:   "new <description...>",
 		Short: "Create a top-level task",
 		Args:  cobra.MinimumNArgs(1),
@@ -45,9 +46,12 @@ func newTaskCommand(result io.Writer) *cobra.Command {
 			if description == "" {
 				return fmt.Errorf("description is required")
 			}
-			title, err := readTitle(cmd.ErrOrStderr(), cmd.InOrStdin())
-			if err != nil {
-				return err
+			if !cmd.Flags().Changed("title") {
+				var err error
+				title, err = readTitle(cmd.ErrOrStderr(), cmd.InOrStdin())
+				if err != nil {
+					return err
+				}
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -64,7 +68,9 @@ func newTaskCommand(result io.Writer) *cobra.Command {
 			_, err = fmt.Fprintln(result, path)
 			return err
 		},
-	})
+	}
+	newCommand.Flags().StringVar(&title, "title", "", "Title for the new task (prompts if omitted)")
+	taskCommand.AddCommand(newCommand)
 	return taskCommand
 }
 

@@ -68,6 +68,27 @@ Describe the task
 	}
 }
 
+func TestTaskNewWithTitleFlag(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	stdout, stderr, err := runCommand("", "task", "new", "--title", "Command Line Title", "Describe", "the task")
+	if err != nil {
+		t.Fatalf("command failed: %v\nstderr: %s", err, stderr)
+	}
+	path := filepath.Join(dir, ".shemiq", "tasks", "command-line-title", "top-level.md")
+	if stdout != path+"\n" || stderr != "" {
+		t.Fatalf("stdout = %q, stderr = %q", stdout, stderr)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(content), "# Command Line Title\n:::shemiq\ntype: top-level\n:::\n") ||
+		!strings.Contains(string(content), "## Description\n\nDescribe the task\n") {
+		t.Fatalf("unexpected document: %s", content)
+	}
+}
+
 func TestTaskNewCreatesProject(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -96,6 +117,8 @@ func TestTaskNewRejectsMissingInput(t *testing.T) {
 		{"missing description", "Unused\n", "requires at least 1 arg(s)", []string{"task", "new"}},
 		{"blank description", "Unused\n", "description is required", []string{"task", "new", "  "}},
 		{"blank title", "  \n", "title is required", []string{"task", "new", "description"}},
+		{"blank title flag", "Fallback\n", "title is required", []string{"task", "new", "--title", "  ", "description"}},
+		{"multiline title flag", "", "title must be one line", []string{"task", "new", "--title", "First\nSecond", "description"}},
 		{"EOF without title", "", "title is required", []string{"task", "new", "description"}},
 		{"empty slug", "é !\n", "ASCII letter or digit", []string{"task", "new", "description"}},
 	} {

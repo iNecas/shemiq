@@ -36,6 +36,9 @@ func CreateTopLevelTask(projectDir, description, title string) (string, error) {
 	if title == "" {
 		return "", fmt.Errorf("title is required")
 	}
+	if strings.ContainsAny(title, "\r\n") {
+		return "", fmt.Errorf("title must be one line")
+	}
 	slug := taskSlug(title)
 	if slug == "" {
 		return "", fmt.Errorf("title must contain an ASCII letter or digit")
