@@ -44,6 +44,10 @@ status: done
 Build the interactive Go command to create a top-level task from a command-line description and prompted title, with project discovery, validation, and focused tests.
 
 ### Improve the code structure
+:::shemiq
+type: task
+source: ./improve-code-structure.md
+status: new
+:::
 
-Whilt the initial implementation works, the structure is not ready for the bigger
-scope. Let's give the code structure ready for further development.
+While the initial implementation works, reorganize the CLI and task operations to support future task commands without changing behavior.
