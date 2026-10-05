@@ -34,7 +34,7 @@ The Go CLI uses Cobra in `cmd/root.go` and currently provides `shemiq task new`;
 
 ## Current status
 
-The design and two-task split are agreed; implementation has not started.
+`shemiq validate [path] [--fix]` is implemented with scoped metadata checks, conservative UUID insertion, stderr findings, and focused CLI tests (`go test ./...` passes). `task.NewUUID()` is available for the remaining adoption task. `task new`, the skill, and existing documents still need UUID updates; that sibling task remains open.
 
 ## Tasks
 
@@ -42,7 +42,7 @@ The design and two-task split are agreed; implementation has not started.
 :::shemiq
 type: task
 source: ./implement-validate-command.md
-status: new
+status: done
 :::
 
 Add scoped metadata validation and conservative `--fix` UUID insertion, with focused CLI tests.

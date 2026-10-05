@@ -8,6 +8,6 @@ import (
 
 func main() {
 	if err := cmd.Execute(os.Stdin, os.Stdout, os.Stderr, os.Args[1:]); err != nil {
-		os.Exit(1) // Cobra has already printed the error and usage to stderr.
+		os.Exit(1) // The command has already written diagnostics to stderr.
 	}
 }

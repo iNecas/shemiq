@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -158,10 +157,4 @@ func TestTaskNewDoesNotOverwrite(t *testing.T) {
 	if err != nil || string(content) != "keep me" {
 		t.Fatalf("document = %q, error = %v", content, err)
 	}
-}
-
-func runCommand(input string, args ...string) (string, string, error) {
-	var stdout, stderr bytes.Buffer
-	err := Execute(strings.NewReader(input), &stdout, &stderr, args)
-	return stdout.String(), stderr.String(), err
 }
