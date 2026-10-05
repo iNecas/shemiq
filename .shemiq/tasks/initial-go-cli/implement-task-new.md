@@ -2,7 +2,7 @@
 :::shemiq
 type: task
 parent: ./top-level.md
-status: new
+status: done
 :::
 
 ## Context
@@ -24,3 +24,9 @@ The Go module exists, but there is no CLI implementation yet. The parent task de
 - From the invocation directory, walk upward to the nearest existing `.shemiq/` directory; if none is found, create `.shemiq/` in that directory. Create `.shemiq/tasks/<slug>/` exclusively and fail if it already exists, without touching its contents. Write `top-level.md` directly inside the newly created directory. If the write fails, best-effort remove the file and directory created for this task and report the failure (including any cleanup failure); no crash-safe atomicity is promised.
 - Render the top-level document as `# <title>`, a `:::shemiq` directive with `type: top-level`, `## Description` containing the supplied description, and `## Context`, `## Interview`, `## Design`, `## Current status`, and `## Tasks` each containing `[TBD]`. Do not create subtasks or other project files.
 - Test via the Cobra command and temporary directories: success when a nested invocation discovers an existing project, success when a new `.shemiq/` must be created, missing description/title input, and collision without overwriting an existing task. Check the document and absolute stdout path in success cases. No agent integration or broad helper-level test suite is needed.
+
+## Implementation notes
+
+- Added a Cobra command tree in `main.go` with a one-line stderr title prompt. Cobra's error usage is directed to stderr; only a successful task path is written to stdout.
+- `task.go` discovers the nearest existing `.shemiq/`, validates the input and ASCII slug before creating directories, exclusively creates the task directory, and writes the top-level document with best-effort cleanup if writing fails. Creation takes the title as data rather than reading from the prompt.
+- Added focused command tests for existing/new projects, document content and absolute output, invalid inputs, and collision preservation. `go test ./...` and `go vet ./...` pass.

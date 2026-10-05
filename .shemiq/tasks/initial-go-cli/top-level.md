@@ -30,7 +30,7 @@ Shemiq tracks work in Markdown under `.shemiq/tasks/`, using `:::shemiq` directi
 
 ## Current status
 
-Only the Go module and task/prompt documentation exist; no CLI has been implemented yet.
+The initial Go CLI now implements `shemiq task new <description...>` with a prompted title, ASCII slug generation, upward project discovery, top-level document creation, collision protection, and focused command tests. Title collection is separate from file creation for future agent integration.
 
 ## Tasks
 
@@ -38,7 +38,7 @@ Only the Go module and task/prompt documentation exist; no CLI has been implemen
 :::shemiq
 type: task
 source: ./implement-task-new.md
-status: new
+status: done
 :::
 
 Build the interactive Go command to create a top-level task from a command-line description and prompted title, with project discovery, validation, and focused tests.
