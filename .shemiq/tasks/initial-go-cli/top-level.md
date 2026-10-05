@@ -1,6 +1,7 @@
 # Initial Go CLI
 :::shemiq
 type: top-level
+uuid: a90d236d-0a22-442d-965a-ebb43ae14a44
 :::
 
 ## Description

@@ -1,6 +1,7 @@
 # Add validate command for task metadata
 :::shemiq
 type: top-level
+uuid: ccc11874-4584-472b-9968-f95faa709d0e
 :::
 
 ## Description
