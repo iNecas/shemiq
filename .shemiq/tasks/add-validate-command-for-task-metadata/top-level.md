@@ -12,7 +12,7 @@ Introduce a `uuid` field to uniquely identify each task. Every `:::shemiq` direc
 
 ## Context
 
-The Go CLI uses Cobra in `cmd/root.go` and currently provides `shemiq task new`; `internal/task/task.go` discovers `.shemiq/` directories and renders new top-level documents. There is no metadata parser or validator. `skills/shemiq/SKILL.md` documents directives with `type`, `parent`, `source`, and `status`, while existing `.shemiq/` documents provide real examples. Current documents and `task new` output lack UUIDs. The skill's task-entry examples use `todo`, although its status list says `new`, `progress`, and `done`.
+The Go CLI uses Cobra and provides `shemiq task new` and `shemiq validate`; `internal/task/task.go` discovers `.shemiq/` directories and renders new top-level documents. The validator now checks metadata and can insert missing UUIDs. `skills/shemiq/SKILL.md` documents directives with `type`, `parent`, `source`, and `status`, while existing `.shemiq/` documents provide real examples. Existing documents have been repaired and validated; `task new` still lacks UUIDs. The skill's task-entry examples use `todo`, although its status list says `new`, `progress`, and `done`.
 
 ## Interview
 
@@ -35,7 +35,7 @@ The Go CLI uses Cobra in `cmd/root.go` and currently provides `shemiq task new`;
 
 ## Current status
 
-`shemiq validate [path] [--fix]` is implemented with scoped metadata checks, conservative UUID insertion, stderr findings, and focused CLI tests (`go test ./...` passes). `task.NewUUID()` is available for the remaining adoption task. `task new`, the skill, and existing documents still need UUID updates; that sibling task remains open.
+`shemiq validate [path] [--fix]` performs scoped metadata checks and conservative UUID insertion. `task new` now uses the shared UUID generator to create valid top-level documents, and the skill documents UUID/source rules and the manual validation workflow. Both tasks are complete; `go test ./...` and read-only `go run . validate` pass. Existing compliant documents were not migrated again.
 
 ## Tasks
 
@@ -52,9 +52,9 @@ Add scoped metadata validation and conservative `--fix` UUID insertion, with foc
 :::shemiq
 type: task
 source: ./adopt-uuid-metadata.md
-status: new
+status: done
 :::
 
-Use the shared UUIDv4 generator in `task new`, update the skill and affected tests, and bring existing `.shemiq/` documents into compliance.
+Use the shared UUIDv4 generator in `task new`, update the skill and affected tests.
 
 The skill should instruct the agent to not attempt to generate the uuid on its own, but rather rely on validate --fix to fill in the missing uuids.

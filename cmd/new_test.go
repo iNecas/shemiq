@@ -3,9 +3,12 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+var newTaskUUIDLine = regexp.MustCompile(`(?m)^uuid: [0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 func TestTaskNewDiscoversProject(t *testing.T) {
 	project := t.TempDir()
@@ -33,9 +36,13 @@ func TestTaskNewDiscoversProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !newTaskUUIDLine.Match(content) {
+		t.Fatalf("document lacks a canonical UUIDv4: %s", content)
+	}
 	want := `# My New Task!
 :::shemiq
 type: top-level
+uuid: <generated>
 :::
 
 ## Description
@@ -62,8 +69,12 @@ Describe the task
 
 [TBD]
 `
-	if string(content) != want {
-		t.Fatalf("document = %q, want %q", content, want)
+	if newTaskUUIDLine.ReplaceAllString(string(content), "uuid: <generated>") != want {
+		t.Fatalf("document = %q, want %q (with generated UUID)", content, want)
+	}
+	out, diag, err := runCommand("", "validate", path)
+	if err != nil || out != "" || diag != "" {
+		t.Fatalf("new task failed validation: out=%q diag=%q err=%v", out, diag, err)
 	}
 }
 
@@ -82,7 +93,8 @@ func TestTaskNewWithTitleFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(string(content), "# Command Line Title\n:::shemiq\ntype: top-level\n:::\n") ||
+	if !newTaskUUIDLine.Match(content) ||
+		!strings.HasPrefix(newTaskUUIDLine.ReplaceAllString(string(content), "uuid: <generated>"), "# Command Line Title\n:::shemiq\ntype: top-level\nuuid: <generated>\n:::\n") ||
 		!strings.Contains(string(content), "## Description\n\nDescribe the task\n") {
 		t.Fatalf("unexpected document: %s", content)
 	}

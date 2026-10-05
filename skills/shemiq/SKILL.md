@@ -18,9 +18,17 @@ Some usage scenarios involve using the `shemiq` command. If the command is not p
 ## Creating a top-level task with the CLI
 
 - From the **target project's working directory**, run `shemiq task new --title <one-line title> <original description>` using the executable located above. Pass the whole description as **one safely shell-quoted argument** and quote the title too. The CLI discovers the nearest `.shemiq/` upwards or creates one in the working directory, derives the slug from the title, writes `.shemiq/tasks/<slug>/top-level.md`, rejects collisions, and prints the absolute file path. Report that printed path on success; surface CLI errors without guessing a path or creating the file manually.
-- This CLI creates **top-level tasks only**. For subtasks, metadata edits, and other document changes, use the format below; do not claim `task new` supports them.
+- This CLI creates **top-level tasks only** and assigns their UUIDs automatically. For subtasks, metadata edits, and other document changes, use the format below; do not claim `task new` supports them.
+
+## Metadata and validation
+
+- Every `:::shemiq` directive without `source:` needs its **own** canonical lowercase UUIDv4 in `uuid:`, even if it contains only `status:`. A directive with `source:` must **not** have `uuid:`; its identity comes from the referenced task. Accepted statuses are `new`, `progress`, and `done`.
+- When writing or editing directives by hand, do **not** generate or copy UUIDs yourself. Leave `uuid:` absent on new source-less directives, then run `shemiq validate --fix <file>` **separately for each touched Markdown file** needing repair. `--fix` only inserts missing UUIDs; resolve any remaining validation errors manually and recheck with `shemiq validate <file>`.
+- `shemiq validate [path] [--fix]` checks metadata in a Markdown file or recursively in a directory. Without a path it scans the nearest existing `.shemiq/` directory. A failed check reports errors and exits nonzero.
 
 ## Common structure
+
+These are illustrative **pre-repair** examples: source-less directives intentionally omit `uuid:`. Do not copy them as final documents; run `validate --fix` on each file after writing it.
 
 ### Top level tasks
 
@@ -71,14 +79,14 @@ in separate documents.
     :::shemiq
     type: task
     source: ./buy-the-things.md
-    status: todo
+    status: new
     :::
 
     ### Put the things in place
     :::shemiq
     type: task
     source: ./put-the-things-in-place.md
-    status: todo
+    status: new
     :::
 
 ### Tasks
@@ -113,8 +121,8 @@ that should be possible to do in one session.
 
 ## The status
 
-```
-:::shemiq
-status: [new|progress|done]
-:::
-```
+Even a status-only directive needs a UUID. This is a pre-repair example; run `validate --fix <file>` after writing it:
+
+    :::shemiq
+    status: [new|progress|done]
+    :::

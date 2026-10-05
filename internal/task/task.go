@@ -48,6 +48,10 @@ func CreateTopLevelTask(projectDir, description, title string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve project directory: %w", err)
 	}
+	id, err := NewUUID()
+	if err != nil {
+		return "", err
+	}
 	tasksDir := filepath.Join(projectDir, "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		return "", fmt.Errorf("create tasks directory %s: %w", tasksDir, err)
@@ -57,7 +61,7 @@ func CreateTopLevelTask(projectDir, description, title string) (string, error) {
 		return "", fmt.Errorf("create task directory %s: %w", taskDir, err)
 	}
 	path := filepath.Join(taskDir, "top-level.md")
-	if err := os.WriteFile(path, []byte(topLevelDocument(title, description)), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(topLevelDocument(title, description, id)), 0644); err != nil {
 		return "", errors.Join(fmt.Errorf("write %s: %w", path, err), cleanupTask(path, taskDir))
 	}
 	return path, nil
@@ -84,10 +88,11 @@ func taskSlug(title string) string {
 	return slug.String()
 }
 
-func topLevelDocument(title, description string) string {
+func topLevelDocument(title, description, id string) string {
 	return fmt.Sprintf(`# %s
 :::shemiq
 type: top-level
+uuid: %s
 :::
 
 ## Description
@@ -113,7 +118,7 @@ type: top-level
 ## Tasks
 
 [TBD]
-`, title, description)
+`, title, id, description)
 }
 
 func cleanupTask(path, taskDir string) error {
