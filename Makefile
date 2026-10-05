@@ -3,10 +3,10 @@
 GO ?= go
 BIN := bin/shemiq
 
-.PHONY: help fmt test vet check build run clean
+.PHONY: help fmt test vet check build install run clean
 
 help:
-	@printf 'Targets: fmt, test, vet, check, build, run (ARGS="..."), clean\n'
+	@printf 'Targets: fmt, test, vet, check, build, install, run (ARGS="..."), clean\n'
 
 fmt:
 	$(GO) fmt ./...
@@ -22,6 +22,9 @@ check: test vet
 build:
 	mkdir -p bin
 	$(GO) build -o $(BIN) .
+
+install:
+	$(GO) install .
 
 run:
 	$(GO) run . $(ARGS)
