@@ -51,3 +51,19 @@ status: done
 :::
 
 While the initial implementation works, reorganize the CLI and task operations to support future task commands without changing behavior.
+
+### Pass title via command line
+
+Currently, only interactive method of passing title in `task new` is supported.
+
+Let's add `task new --title "The title" descriptino in the rest of args` to provide
+the info on command line.
+
+### Update the prompts and skills to start using shemiq binary
+
+prompts/shemiq-new.md is the counterpart of the `shemiq task new`. Let's make
+it more deterministic by using the binary for actual task creation.
+
+The skill in skills/shemiq/SKILL.md should be expanded for the awareness
+of the binary and to use `make install` in the repo dir in case the binary is
+not available.
