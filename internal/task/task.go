@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/iNecas/shemiq/internal/utils"
 )
 
 // FindProjectDirectory returns the nearest .shemiq directory, or the path
@@ -89,36 +91,37 @@ func taskSlug(title string) string {
 }
 
 func topLevelDocument(title, description, id string) string {
-	return fmt.Sprintf(`# %s
-:::shemiq
-type: top-level
-uuid: %s
-:::
+	return fmt.Sprintf(utils.Dedent(`
+		# %s
+		:::shemiq
+		type: top-level
+		uuid: %s
+		:::
 
-## Description
+		## Description
 
-%s
+		%s
 
-## Context
+		## Context
 
-[TBD]
+		[TBD]
 
-## Interview
+		## Interview
 
-[TBD]
+		[TBD]
 
-## Design
+		## Design
 
-[TBD]
+		[TBD]
 
-## Current status
+		## Current status
 
-[TBD]
+		[TBD]
 
-## Tasks
+		## Tasks
 
-[TBD]
-`, title, id, description)
+		[TBD]
+		`), title, id, description)
 }
 
 func cleanupTask(path, taskDir string) error {

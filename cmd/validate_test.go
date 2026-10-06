@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/iNecas/shemiq/internal/utils"
 )
 
 const testUUID = "12345678-1234-4234-8234-123456789abc"
@@ -14,14 +16,14 @@ const testUUID = "12345678-1234-4234-8234-123456789abc"
 func TestValidateScopeAndDuplicates(t *testing.T) {
 	project := t.TempDir()
 	dir := filepath.Join(project, ".shemiq")
-	withUUID := fmt.Sprintf(dedent(`
+	withUUID := fmt.Sprintf(utils.Dedent(`
 		:::shemiq
 		uuid: %s
 		:::
 		`), testUUID)
 	a := writeTestMarkdown(t, filepath.Join(dir, "a.md"), withUUID)
 	b := writeTestMarkdown(t, filepath.Join(dir, "nested", "b.md"), withUUID)
-	writeTestMarkdown(t, filepath.Join(dir, "nested", "plain.md"), dedent(`
+	writeTestMarkdown(t, filepath.Join(dir, "nested", "plain.md"), utils.Dedent(`
 		No metadata
 		`))
 	cwd := filepath.Join(project, "subdir")
@@ -45,7 +47,7 @@ func TestValidateScopeAndDuplicates(t *testing.T) {
 
 func TestValidateFixPreservesBytesAndReportsRemainingErrors(t *testing.T) {
 	dir := t.TempDir()
-	original := strings.ReplaceAll(dedent(`
+	original := strings.ReplaceAll(utils.Dedent(`
 		prefix
 		    :::shemiq
 		:::shemiq
@@ -85,7 +87,7 @@ func TestValidateFixPreservesBytesAndReportsRemainingErrors(t *testing.T) {
 
 func TestValidateSuccessfulFixAndSourceException(t *testing.T) {
 	dir := t.TempDir()
-	path := writeTestMarkdown(t, filepath.Join(dir, "task.md"), dedent(`
+	path := writeTestMarkdown(t, filepath.Join(dir, "task.md"), utils.Dedent(`
 		:::shemiq
 		type: task
 		:::
@@ -117,7 +119,7 @@ func TestValidateSuccessfulFixAndSourceException(t *testing.T) {
 
 func TestValidateInvalidMetadataAndReferences(t *testing.T) {
 	dir := t.TempDir()
-	original := fmt.Sprintf(dedent(`
+	original := fmt.Sprintf(utils.Dedent(`
 		:::shemiq
 		type: other
 		status: todo
@@ -167,17 +169,6 @@ func TestValidateNoProject(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(dir, ".shemiq")); !os.IsNotExist(statErr) {
 		t.Fatalf("validation created project: %v", statErr)
 	}
-}
-
-// dedent removes the indentation of the first content line from each line.
-// A closing backtick on its own line leaves a trailing newline in the fixture.
-func dedent(content string) string {
-	lines := strings.Split(strings.TrimPrefix(content, "\n"), "\n")
-	indent := lines[0][:len(lines[0])-len(strings.TrimLeft(lines[0], " \t"))]
-	for i, line := range lines {
-		lines[i] = strings.TrimPrefix(line, indent)
-	}
-	return strings.Join(lines, "\n")
 }
 
 func writeTestMarkdown(t *testing.T, path, content string) string {
