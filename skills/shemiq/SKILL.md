@@ -20,6 +20,11 @@ Some usage scenarios involve using the `shemiq` command. If the command is not p
 - From the **target project's working directory**, run `shemiq new --title <one-line title> <original description>` using the executable located above. Pass the whole description as **one safely shell-quoted argument** and quote the title too. The CLI discovers the nearest `.shemiq/` upwards or creates one in the working directory, derives the slug from the title, writes `.shemiq/tasks/<slug>/top-level.md`, rejects collisions, and prints the absolute file path. Report that printed path on success; surface CLI errors without guessing a path or creating the file manually.
 - This CLI creates **top-level tasks only** and assigns their UUIDs automatically. For subtasks, metadata edits, and other document changes, use the format below; do not claim `shemiq new` supports them.
 
+## Archiving a top-level task
+
+- Run `shemiq archive <path>` to move one task directory from the nearest existing project's `.shemiq/tasks/` to `.shemiq/archive/YYYY-MM-DD-<task-directory-name>/` (date in UTC). `<path>` may be the directory itself or its existing `top-level.md` file, absolute or relative to the working directory. The task must be an immediate child of that project's `tasks/`; a directory does not need a `top-level.md` file.
+- The command renames the whole directory without modifying its contents or checking metadata/status, rejects destination collisions, and prints the absolute archive directory path on success. It never creates a new `.shemiq/` project. Links in other documents are not rewritten; update them manually if necessary.
+
 ## Metadata and validation
 
 - Every `:::shemiq` directive without `source:` needs its **own** canonical lowercase UUIDv4 in `uuid:`, even if it contains only `status:`. A directive with `source:` must **not** have `uuid:`; its identity comes from the referenced task. Accepted statuses are `new`, `progress`, and `done`.
