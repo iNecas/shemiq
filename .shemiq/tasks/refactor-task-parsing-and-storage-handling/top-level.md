@@ -149,7 +149,7 @@ Use existing command-level tests as the primary regression suite. Add only focus
 
 ## Current status
 
-High-level refinement and task split are approved. No implementation changes have been made; each subtask remains `new` and will be refined separately.
+High-level refinement and task split are approved. Single-document parsing is implemented and marked `done`: `internal/task/parse.go` provides the private section tree, original-byte spans, ordered metadata fields, fatal syntax diagnostics, and fenced-example exclusion. Focused parser tests, `go test ./...`, and `go vet ./...` pass. Existing callers and legacy parsing are intentionally unchanged; the scoped-store and validation subtasks will integrate the parser and retire those paths. The remaining subtasks are still `new` and will be refined separately.
 
 ## Tasks
 
@@ -157,10 +157,12 @@ High-level refinement and task split are approved. No implementation changes hav
 :::shemiq
 type: task
 source: ./unify-single-document-parsing.md
-status: new
+status: done
 :::
 
 Introduce the private section-based parser with byte-preserving source positions, fatal syntax errors, and exclusion of fenced and indented examples.
+
+Refinement note: introduce the parser independently without migrating existing callers. The scoped-store and validation subtasks will integrate it and remove the corresponding legacy parsing paths.
 
 ### Introduce the scoped store and task model
 :::shemiq
@@ -171,6 +173,8 @@ status: new
 
 Implement scoped loading, single-node task conversion with attached issues, `TaskByPath` and `TopLevelTasks`, and migrate refinement to the store API.
 
+Parser handoff: consume `parseMarkdownDocument` and its section/heading spans; legacy outline parsing remains until this migration.
+
 ### Consolidate validation and repairs
 :::shemiq
 type: task
@@ -179,6 +183,8 @@ status: new
 :::
 
 Implement store-based validation that collects conversion issues, loads referenced documents, checks cross-document semantics, and preserves existing targeted repair behavior.
+
+Parser handoff: ordered field occurrences and repair offsets are ready; retain or relocate the shared syntax helpers when retiring `metadata.go` parsing.
 
 ### Consolidate creation and archive boundaries
 :::shemiq
