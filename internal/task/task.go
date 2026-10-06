@@ -10,6 +10,25 @@ import (
 	"github.com/iNecas/shemiq/internal/utils"
 )
 
+type TaskType string
+
+const (
+	TypeTopLevel TaskType = "top-level"
+	TypeTask     TaskType = "task"
+)
+
+// Task represents a top-level document or an entry in its task list. Subtasks
+// are read from the parent document; their own files may not exist yet, so
+// Path and ProjectRoot are only set on the top-level task.
+type Task struct {
+	Type        TaskType
+	Title       string
+	Status      string
+	Path        string
+	ProjectRoot string
+	Subtasks    []Task
+}
+
 // FindProjectDirectory returns the nearest .shemiq directory, or the path
 // where one should be created if none exists above the invocation directory.
 func FindProjectDirectory(cwd string) (string, error) {

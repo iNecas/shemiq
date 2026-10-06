@@ -266,16 +266,42 @@ func repairStatuses(docs []document) ([]Issue, error) {
 var statusNames = []string{"new", "refined", "done"}
 
 func statusRank(d directive) (int, bool) {
-	field, present := d.fields["status"]
-	if !present {
-		return 0, true
+	status, err := directiveStatus(d)
+	if err != nil {
+		return 0, false
 	}
 	for rank, name := range statusNames {
-		if field.value == name {
+		if status == name {
 			return rank, true
 		}
 	}
 	return 0, false
+}
+
+// Routing uses the same status rules as validation without running Validate:
+// unrelated links or unfinished source files must not block a choice.
+func requireDirectiveType(d directive, want string) error {
+	if !d.parseable || d.repeated["type"] {
+		return fmt.Errorf("malformed %s directive", want)
+	}
+	if d.fields["type"].value != want {
+		return fmt.Errorf("expected type: %s", want)
+	}
+	return nil
+}
+
+func directiveStatus(d directive) (string, error) {
+	if d.repeated["status"] {
+		return "", fmt.Errorf("repeated status")
+	}
+	field, present := d.fields["status"]
+	if !present {
+		return "new", nil
+	}
+	if _, ok := validStatuses[field.value]; !ok {
+		return "", fmt.Errorf("invalid status: %q", field.value)
+	}
+	return field.value, nil
 }
 
 type textEdit struct {

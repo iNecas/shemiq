@@ -39,19 +39,23 @@ with any other implementation).
 The rest of the project is just a set of quality-of-life tools that guide the workflow.
 This includes:
 
+- CLI
+- TUI (TBD)
 - Pi extension (TBD)
-- CLI and TUI (TBD)
+- TUI (TBD)
 - Emacs integration (TBD)
 - Herder integration (TBD)
 
 ## Installation
 
-Clone the repo and point your (next) favorite coding agent to it:
+Install [Pi](https://pi.dev/) and make sure `pi` is on `PATH`. Clone this repository
+and install its prompts and skill as a Pi package:
 
-``` sh
+```sh
 git clone git@github.com:inecas/shemiq.git
 cd shemiq
-pi install (readlink -f .)
+make install
+pi install "$(pwd)"
 ```
 
 At some point, there might be releases and packaging, let's keep it personal for now.
@@ -75,6 +79,9 @@ the refinement process:
 /shemiq-refine-and-split .shemiq/tasks/$MY_TASK/top-level.md
 ```
 
+You can also launch refinement from a terminal with `shemiq refine .shemiq/tasks/$MY_TASK`,
+or run `shemiq refine` to choose a task interactively.
+
 This will guide you thought the refinement process, asking questions about the problem,
 top-level design and initial tasks split. The goal is to gather more context and split
 it to reasonably sized chunks suitable for iterative development.
@@ -92,6 +99,9 @@ to the particular sub-task.
 ```
 /shemiq-refine-sub-task .shemiq/tasks/$MY_TASK/top-level.md "subtask name"
 ```
+
+Or use `shemiq refine .shemiq/tasks/$MY_TASK --subtask "subtask name"` from a terminal.
+Interactive `shemiq refine` variant lets you choose the sub-tasks from refined top-level tasks.
 
 **4. Implement the refined sub-task**
 

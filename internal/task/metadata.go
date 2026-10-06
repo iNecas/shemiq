@@ -28,6 +28,7 @@ type directive struct {
 	insertAt   int
 	lineEnding string
 	parseable  bool
+	repeated   map[string]bool
 	fields     map[string]metadataField
 }
 
@@ -56,7 +57,7 @@ func parseDocument(path string, data []byte) document {
 				current.parseable = false
 				doc.issues = append(doc.issues, Issue{path, line, "nested shemiq directive", false})
 			} else {
-				current = &directive{line: line, fields: make(map[string]metadataField), parseable: true}
+				current = &directive{line: line, fields: make(map[string]metadataField), repeated: make(map[string]bool), parseable: true}
 			}
 		case strings.HasPrefix(text, ":::shemiq"):
 			doc.issues = append(doc.issues, Issue{path, line, "malformed shemiq directive opener", false})
@@ -76,6 +77,7 @@ func parseDocument(path string, data []byte) document {
 				break
 			}
 			if _, exists := current.fields[key]; exists {
+				current.repeated[key] = true
 				doc.issues = append(doc.issues, Issue{path, line, "repeated metadata field: " + key, false})
 			} else {
 				trimmed := strings.TrimSpace(value)

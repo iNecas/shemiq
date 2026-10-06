@@ -1,7 +1,7 @@
 # Add shemiq refine CLI
 :::shemiq
 type: top-level
-status: refined
+status: done
 uuid: be33cb2a-b82a-4659-ac91-f7152bed87e1
 :::
 
@@ -47,7 +47,7 @@ The Go CLI uses Cobra commands registered in `cmd/root.go`; `cmd/new.go` and `in
 
 ## Current status
 
-High-level design agreed. The refinement status lifecycle is implemented: validation follows reciprocal task links, repairs status mismatches with `--fix`, and accepts `new`, `refined`, and `done`. Both refinement prompts now record approved completion. Task resolution, terminal selection, Pi launch, and CLI usage documentation remain to be implemented.
+All three implementation tasks are complete. Validation follows reciprocal task links, repairs status mismatches with `--fix`, and accepts `new`, `refined`, and `done`; both refinement prompts record user-approved completion. `shemiq refine` resolves explicit or active tasks, routes by status, preserves numbered task/subtask selection, and now starts a fresh interactive Pi session through a provider-neutral launcher instead of printing a TODO preview. Pi runs at the selected project root with inherited environment and original streams, requires terminal stdin/stdout, and receives one parser-compatible slash-command message. Selection and launch never edit documents or infer refinement completion from process exit. README and the Shemiq skill cover setup, enabled-template prerequisites, CLI usage, and direct slash-command alternatives. Focused recording-launcher and fake-process tests cover routing, stream identity, quoting, working directory/environment, launch failures, redirection rejection, and document non-mutation. `make check` and task-directory metadata validation pass.
 
 ## Tasks
 
@@ -64,7 +64,7 @@ Change accepted statuses to `new`, `refined`, and `done`, and update the refinem
 :::shemiq
 type: task
 source: ./resolve-tasks-and-offer-terminal-selection.md
-status: new
+status: done
 :::
 
 Add document discovery, status-based routing, and numbered top-level and subtask pickers.
@@ -75,7 +75,7 @@ Instead of launching pi, it will finish with "TODO: launch `pi ...`" with approp
 :::shemiq
 type: task
 source: ./launch-pi-from-shemiq-refine.md
-status: new
+status: done
 :::
 
-Wire the CLI to a small launcher interface, invoke the installed Pi templates, add focused CLI coverage, and document usage.
+Wire the CLI to a small launcher interface, invoke the installed Pi templates, add focused CLI coverage, and document usage. Replace the selection task's TODO preview using its resolved flow, document path, project root, and optional subtask title.

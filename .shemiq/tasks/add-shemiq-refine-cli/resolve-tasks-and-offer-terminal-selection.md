@@ -1,0 +1,37 @@
+# Resolve tasks and offer terminal selection
+:::shemiq
+type: task
+parent: ./top-level.md
+status: done
+uuid: ca53cb18-2004-4d44-94d4-4c8eb77d4b3d
+:::
+
+## Context
+
+The parent task defines `shemiq refine [path] [--subtask "Title"]`: new top-level tasks use `/shemiq-refine-and-split`; refined top-level tasks select a new subtask for `/shemiq-refine-sub-task`. `done` tasks and non-new subtasks cannot be refined. An omitted status means `new`. The completed status-lifecycle task updated validation and both Pi prompts; it did not implement CLI routing. The following task will launch Pi, add launch-specific coverage, and document usage. **This task stops at a `TODO: launch pi ...` preview; it must not start Pi or modify task documents.**
+
+`cmd/root.go` registers Cobra commands; `cmd/command_test.go` tests commands using supplied input/output streams. `internal/task/task.go` has project discovery for creation (which returns a prospective `.shemiq/` when absent); `internal/task/metadata.go` parses Shemiq directives, but does not associate them with Markdown headings. `internal/task/validate.go` checks links, UUIDs, and statuses. Do not make full-document validation a prerequisite to refinement: `source:` subtask files may not exist, and unrelated validation issues should not block routing.
+
+## Interview
+
+- With no path, an active task directory missing `top-level.md` should **fail the picker**, not disappear silently or produce a warning. Keep malformed-document handling narrow for this task: require what is necessary to route or show an option; defer broader validation policy.
+- Resolve selection to a small handoff value: chosen flow, absolute top-level document path, project root, and optional exact subtask title. Do not introduce a provider interface or Pi process yet.
+- Show a `TODO: launch pi ...` preview with the intended working directory and slash-command prompt, rather than executing the command. Prompts/options go to the diagnostic stream; the final preview goes to the result stream. Keep tests small and CLI-oriented.
+- Put reusable numbered selection in `internal/console`, not a TUI package. Use a console object so consecutive picks share one buffered reader. Do not move `cmd/new.go`'s title prompt in this task. EOF (Ctrl-D) cancels; blank Enter and invalid input re-prompt until a valid choice or EOF.
+
+## Implementation plan
+
+- Register `refine [path]` with optional `--subtask "Title"` in Cobra. Resolve an explicit directory to `top-level.md` or accept that filename directly, relative to the caller's working directory. Require an existing regular document inside an enclosing `.shemiq/` project (including archives); locate the project from the target rather than the caller. The project root is the directory containing `.shemiq/`. Do not create a project or task files. Reject wrong filenames, missing files/projects, and paths that cannot be routed.
+- Without a path, discover the nearest *existing* `.shemiq/` from the caller, then enumerate only immediate child directories of its active `tasks/`; do not list archived tasks. Read their top-level titles and statuses, exclude `done`, and offer a deterministic numbered list of unfinished tasks. Fail on a missing `top-level.md` in an active task directory (even if other tasks are valid). Keep parsing light: reuse existing metadata parsing for routing-relevant fields rather than calling `Validate` or creating a separate comprehensive Markdown validator.
+- Require a usable top-level directive and status (`new` when absent, otherwise `new`, `refined`, or `done`). For a refined top-level document, use `###` heading / `type: task` directive pairs within `## Tasks` for authoritative subtask titles and statuses; do not read separate subtask files. Select only new/omitted-status subtasks. Match `--subtask` by exact title, reject ambiguous or ineligible matches, and reject `--subtask` for a new top-level task. Invalid metadata needed for a route or no eligible choices must return an error without proceeding; invalid or blank selection input re-prompts, while EOF cancels. Do not add special handling for other malformed Markdown beyond what routing needs.
+- Keep command orchestration in `cmd/refine.go` and discovery/metadata reading in `internal/task/refine.go`. Add only a numbered picker to `internal/console`: `console.New(input io.Reader, output io.Writer)` holds a single buffered reader; `Pick(heading string, labels []string) (int, error)` prints 1-based choices, reads one response, and returns a zero-based index. EOF returns `console.ErrCancelled`; blank, non-numeric, and out-of-range input re-prompt until a valid answer or EOF. No Cobra dependency, Shemiq task types, or changes to `cmd/new.go`'s `readTitle`. Construct one console from Cobra's input and diagnostic streams and reuse it for both pickers.
+- After selection, carry the flow, absolute document path, project root, and optional title in a small internal value that the later launcher can consume. For now, print a human-readable `TODO: launch pi ...` command preview using `/shemiq-refine-and-split <path>` or `/shemiq-refine-sub-task <path> "<title>"` as the single initial Pi message. Include the intended working directory, and quote paths/titles so spaces or quotes remain unambiguous; do not execute a shell, invoke Pi, or change statuses. The installed Shemiq Pi templates remain a prerequisite for the later launch task.
+- Add focused CLI-level tests with temporary projects and supplied input/output: both explicit path forms including an archived task, numbered top-level and subtask selection (including two consecutive picks from supplied input), omitted/explicit statuses and exact-title `--subtask`, preview arguments/project root, and a few key rejections (missing active document, no project, done/ineligible/ambiguous title, cancellation). No live Pi test or exhaustive parser edge-case matrix.
+
+## Implementation notes
+
+- Added `shemiq refine [path] [--subtask "Title"]` and a `resolvedRefinement` handoff (flow, absolute document path, project root, exact subtask title). For now it prints a quoted `TODO: launch pi ...` preview with the intended working directory and initial slash-command message; the prompt uses the document path relative to that working directory, while the handoff retains its absolute path. It does not invoke Pi or change task documents.
+- Explicit paths accept a task directory or `top-level.md` inside `.shemiq/`, including archives, and locate the project from the resolved document. No-path discovery reads immediate active `tasks/` directories in sorted order, excludes done tasks, and fails if any active directory lacks its document. The picker reads only top-level metadata until a refined task is chosen.
+- Routing pairs headings with adjacent directives under `## Tasks`, reads status from the parent document (missing means new), and does not follow `source:` references or call full validation. The reusable `internal/console` picker retains one buffered reader for consecutive prompts; EOF cancels, while blank or invalid input prints a hint and re-prompts.
+- Added focused CLI tests for explicit/archived paths, two picks, exact-title routing, preview, and representative failures. `go test ./...` passes. Pi launch and usage documentation remain for the next task.
+- Follow-up: the completed launch task replaced the TODO preview with interactive Pi, relocated the handoff to `internal/agent.Request`, and converted preview assertions to request/stream assertions without changing selection behavior.
