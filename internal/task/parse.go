@@ -120,6 +120,27 @@ func parseMarkdownDocument(path string, data []byte) (*parsedDocument, error) {
 	return doc, nil
 }
 
+func adjacentDirective(doc *parsedDocument, section *parsedSection) *parsedDirective {
+	if len(section.directives) == 0 {
+		return nil
+	}
+	directive := section.directives[0]
+	between := doc.data[section.heading.end:directive.opening.start]
+	if len(bytes.TrimSpace(between)) != 0 {
+		return nil
+	}
+	return directive
+}
+
+func hasParsedField(directive *parsedDirective, key string) bool {
+	for _, field := range directive.fields {
+		if field.key == key {
+			return true
+		}
+	}
+	return false
+}
+
 func markdownLine(data []byte, start, line int) (string, sourceSpan) {
 	end := len(data)
 	if i := bytes.IndexByte(data[start:], '\n'); i >= 0 {

@@ -58,7 +58,7 @@ Existing command-level tests provide the main regression coverage. Keep new test
 Agreed decisions:
 
 - Use a focused store for task loading, queries, validation, and creation; keep CLI interaction and workflow policy in commands.
-- Only the store component uses the private parser. Configure the store for the active project, one directory, or one file; validation may load additional referenced files.
+- Only the store component uses the private parser. Configure it through `NewStore(cwd, path string)` for the active project, one directory, or one file; validation may load additional referenced files.
 - Syntax errors stop loading. There is no partial-document API.
 - Initialization and loading do not require comprehensive semantic validity. Task conversion records local issues, and validation is an explicit operation.
 - Support ATX headings and column-zero Shemiq directives, ignoring fenced code blocks and indented examples; do not introduce a full Markdown parser.
@@ -67,6 +67,7 @@ Agreed decisions:
 - A parent-list entry's path is its referenced child file, even when that file does not exist. Its title and status come from the parent entry, not the child document.
 - Each `Task` links privately to one parsed section. A parent-list entry and a standalone child task are distinct representations, not a merged object.
 - Invalid metadata produces empty/unusable fields plus located conversion issues; it does not fail task queries or silently substitute valid values. An omitted status still means `new`.
+- Scoped-store refinement revision: commands do not inspect or report attached conversion issues. Refinement uses interpreted fields and ordinary workflow guards; validation reports issues. Interactive child selection includes only usable `task` entries with `new` status.
 - Use `parse.go`, `task.go`, `store.go`, `validate.go` including repair logic, and `create.go`.
 
 ## Design
@@ -90,20 +91,22 @@ Move archive orchestration into `cmd/archive.go`, retaining its filesystem-only 
 The agreed high-level API is:
 
 ```go
-NewStore(options StoreOptions) (*Store, error)
+NewStore(cwd, path string) (*Store, error)
 (*Store).TopLevelTasks() ([]Task, error)
 (*Store).TaskByPath(path string) (Task, error)
 (*Store).Validate(fix bool) ([]Issue, error)
 (*Store).CreateTopLevel(title, description string) (string, error)
 ```
 
-These are API sketches; refine exact configuration types in the corresponding subtask without changing these responsibilities.
+Pass the invocation directory and optional scope path directly to `NewStore`; no separate options type is needed. An empty scope path selects the nearest project's active tasks. The validation and creation subtasks will implement their respective methods without changing these responsibilities.
 
 Configuration records the invocation directory and a scope: active project tasks, one directory, or one Markdown file. Directory scopes recursively select Markdown documents. Explicit scopes support archived tasks and other projects. Resolve relative selection paths against the invocation directory and metadata references against their containing document.
 
 Configuration does not write files. Operations load the selected scope when they need document data; creation must work without an existing project and without parsing unrelated tasks. Read and validation operations must not create a project. Cache loaded documents and do not parse a file repeatedly unless a repair changes its contents. Task queries do not silently expand their configured scope; validation may do so by following existing local references.
 
-`TopLevelTasks` enumerates immediate active task directories in directory-name order. `TaskByPath` returns a document's primary task without imposing a top-level type or refinement eligibility; a directory argument resolves to its `top-level.md`. A missing document, filesystem failure, or syntax error remains an error. Semantic problems are represented by conversion issues instead.
+Default-scope `TopLevelTasks` enumerates immediate active task directories in directory-name order, preserving errors for missing required `top-level.md` files. Explicit-directory scopes enumerate primary `top-level` tasks recursively in path order; explicit-file scopes return that task or an empty list. Queries do not filter statuses.
+
+`TaskByPath` loads only the requested document within the configured scope and returns its primary task without imposing a top-level type or refinement eligibility; a directory argument resolves to its `top-level.md`, but file arguments need not have that basename. Generic loading supports documents outside `.shemiq`, leaving `ProjectRoot` empty. A missing document, filesystem failure, or syntax error remains an error. Semantic problems are represented by conversion issues instead.
 
 ### Single-document parsing
 
@@ -117,11 +120,17 @@ The store recognizes heading-adjacent task directives, allowing intervening blan
 
 ### Task representation and conversion
 
-`Task` exposes type, title, status, path, project root, subtasks, and conversion issues. It retains a private reference to its one defining parsed section for diagnostics and repairs. Commands never need the parser's structures.
+`Task` exposes type, title, status, path, project root, subtasks, and conversion
+issues. It privately references its defining parsed document and section for
+diagnostics and repairs. Parent-list entries reference their parent document,
+not the source target. Commands never need the parser's structures. The store
+caches only parsed documents. Its loader converts primary tasks and parent-list
+entries on demand, without a stored-document wrapper or interpreted metadata
+cache. Local directive checks are shared with validation.
 
 A standalone task's path identifies its containing file. A parent-list entry's path is its resolved `source:` target, which may not exist yet; without `source:`, its path is empty. Its title and status are taken from the parent entry. Looking up the existing child file returns that document's separate task representation. Do not merge the two representations or replace parent-list metadata with child metadata.
 
-Conversion fills fields that can be interpreted and records located issues for those that cannot. In particular, omitted status becomes `new`; a typo such as `refiend` produces an empty status and an associated issue, not a query error or fallback to `new`. Apply the same principle to other invalid fields. Findings must be attributable to the field that is unusable. Keep issues from metadata-only directives in the store as well.
+Conversion fills fields that can be interpreted and records located issues for those that cannot. In particular, omitted status becomes `new`; a typo such as `refiend` produces an empty status and an associated issue, not a query error or fallback to `new`. Apply the same principle to other invalid fields. Findings must be attributable to the field that is unusable. Preserve metadata-only directives in parsed documents so validation can collect their local findings with the same conversion helper.
 
 Queries return task trees and their issues without requiring a prior `Validate` call. An invalid child does not prevent listing or selecting an unrelated top-level task.
 
@@ -129,7 +138,7 @@ Queries return task trees and their issues without requiring a prior `Validate` 
 
 `cmd/refine.go` uses store queries, checks the selected task's `Type`, and routes according to its usable status. It selects children through `Task.Subtasks`, preserving exact-title matching, duplicate-title rejection, eligibility checks, interactive selection, and Pi launch requests.
 
-Commands check the fields required for the current workflow step and report their corresponding conversion issues when unusable. Invalid statuses must not silently disappear during filtering or become eligible defaults. Unrelated findings, such as missing UUIDs, do not require a comprehensive validation pass before refinement. Uncreated child files remain compatible with selecting parent-list entries.
+Commands do not inspect, print, or filter by attached conversion issues; validation owns their reporting. Refinement retains ordinary type/status routing and eligibility guards. The top-level picker excludes `done` candidates, while interactive child selection includes only usable `task` entries with `new` status. Selecting an unusable type/status produces an ordinary workflow error, never a fallback to `new`. Unrelated findings, such as missing UUIDs, do not require a validation pass before refinement. Uncreated child files remain compatible with selecting parent-list entries. Explicit refinement accepts any Markdown filename and requires interpreted type `top-level`, rather than a conventional basename.
 
 Preserve explicit refinement target containment after symlink resolution and derive the launch project root from the selected target, not merely the caller's working directory. Archive moves retain their own filesystem containment and symlink checks without involving parsing or validation.
 
@@ -145,11 +154,32 @@ With `fix`, retain the existing repairs: insert missing UUIDs on eligible source
 
 Creation preserves project discovery, title/description requirements, slug generation, directory collision rejection, generated UUIDs, and the current document layout. Creation alone may establish a project. Archive preserves whole-directory moves, UTC-dated destinations, collision rejection, and the ability to move a directory with invalid or absent task metadata.
 
-Use existing command-level tests as the primary regression suite. Add only focused coverage for invalid-status conversion and reporting without mandatory validation, fatal syntax errors, and exclusion of fenced examples. Retain end-to-end coverage of selection, explicit paths, missing child files, creation, archiving, reciprocal status repairs, byte preservation, and repair idempotence. Update default validation-scope expectations to active tasks only.
+Use existing command-level tests as the primary regression suite. Add only focused coverage for invalid-status conversion without mandatory validation, ordinary refinement routing guards, fatal syntax errors, and exclusion of fenced examples. Retain end-to-end coverage of selection, explicit paths, missing child files, creation, archiving, reciprocal status repairs, byte preservation, and repair idempotence. Update default validation-scope expectations to active tasks only.
 
 ## Current status
 
-High-level refinement and task split are approved. Single-document parsing is implemented and marked `done`: `internal/task/parse.go` provides the private section tree, original-byte spans, ordered metadata fields, fatal syntax diagnostics, and fenced-example exclusion. Focused parser tests, `go test ./...`, and `go vet ./...` pass. Existing callers and legacy parsing are intentionally unchanged; the scoped-store and validation subtasks will integrate the parser and retire those paths. The remaining subtasks are still `new` and will be refined separately.
+Single-document parsing and the scoped-store/task-model tasks are implemented
+and marked `done`. The store now uses the private parser for lazy, scoped,
+cached document loading, preserves original metadata and repair spans, and exposes
+separate primary tasks and parent-list entries. Refinement uses store queries
+and interpreted fields without inspecting attached issues; legacy refinement
+loading and outline parsing have been removed. Review follow-up removed the
+explicit filename check: refinement now relies on store loading and the
+`top-level` type guard. Command tests now focus on workflow and launch behavior;
+store tests cover overlapping scope/loading cases. Model review removed
+`storedDocument`: tasks reference their defining documents. Further review
+merged primary-task conversion into `loadDocument` and removed the metadata
+cache and `interpretedDirective` type. Only parsed documents are cached;
+local fields/findings are computed on demand. Focused regressions,
+`go test ./...`, and `go vet ./...` pass.
+
+Validation/repairs and creation/archive remain `new` and will be refined
+separately. Legacy validation and repairs remain functional, sharing local
+field checks with store conversion. Existing creation code has moved unchanged
+to `create.go`; its public API and archive behavior are not yet migrated.
+Validation can reuse the private loader, the returned task's defining document,
+and `directiveFields` without imposing primary-task structure on metadata-only
+documents. Refresh replaces parsed snapshots without a separate metadata cache.
 
 ## Tasks
 
@@ -168,12 +198,13 @@ Refinement note: introduce the parser independently without migrating existing c
 :::shemiq
 type: task
 source: ./introduce-scoped-store-and-task-model.md
-status: new
+status: done
 :::
 
 Implement scoped loading, single-node task conversion with attached issues, `TaskByPath` and `TopLevelTasks`, and migrate refinement to the store API.
 
-Parser handoff: consume `parseMarkdownDocument` and its section/heading spans; legacy outline parsing remains until this migration.
+Implementation handoff: store queries now consume the parser; legacy outline
+and refinement loaders are retired.
 
 ### Consolidate validation and repairs
 :::shemiq
@@ -186,6 +217,12 @@ Implement store-based validation that collects conversion issues, loads referenc
 
 Parser handoff: ordered field occurrences and repair offsets are ready; retain or relocate the shared syntax helpers when retiring `metadata.go` parsing.
 
+Store handoff: `loadDocument(path, refresh)` returns a `Task` with its defining
+parsed document. Traverse all directives in that document and collect local
+findings with `directiveFields`; no metadata cache or interpreted-record type
+remains. Refresh replaces parsed snapshots. Keep query-structure issues out of
+validation, which must support metadata-only documents without task headings.
+
 ### Consolidate creation and archive boundaries
 :::shemiq
 type: task
@@ -194,3 +231,6 @@ status: new
 :::
 
 Move creation behind the store API, retain filesystem-only archive orchestration in its command, and remove superseded implementations and public entry points.
+
+Store handoff: existing creation helpers now live unchanged in `create.go`;
+`Store` retains invocation context and can be constructed before a project exists.

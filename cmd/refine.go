@@ -40,22 +40,34 @@ func newRefineCommand(result io.Writer, launcher agent.Launcher) *cobra.Command 
 	return command
 }
 
-func resolveRefinement(cwd, path, subtask string, hasSubtask bool, ui *console.Console) (agent.Request, error) {
-	var selected *task.Task
+func resolveRefinement(
+	cwd, path, subtask string, hasSubtask bool, ui *console.Console,
+) (agent.Request, error) {
+	store, err := task.NewStore(cwd, path)
+	if err != nil {
+		return agent.Request{}, err
+	}
+	var selected task.Task
 	if path != "" {
-		var err error
-		selected, err = task.ReadTopLevelTask(cwd, path)
+		selected, err = store.TaskByPath(path)
 		if err != nil {
 			return agent.Request{}, err
 		}
 	} else {
-		choices, err := task.ListUnfinishedTopLevelTasks(cwd)
+		candidates, err := store.TopLevelTasks()
 		if err != nil {
 			return agent.Request{}, err
 		}
-		labels := make([]string, len(choices))
-		for i, choice := range choices {
-			labels[i] = choice.Title
+		var choices []task.Task
+		var labels []string
+		for _, choice := range candidates {
+			if choice.Status != "done" {
+				choices = append(choices, choice)
+				labels = append(labels, choice.Title)
+			}
+		}
+		if len(choices) == 0 {
+			return agent.Request{}, fmt.Errorf("no unfinished tasks")
 		}
 		i, err := ui.Pick("Select a task:", labels)
 		if err != nil {
@@ -64,6 +76,20 @@ func resolveRefinement(cwd, path, subtask string, hasSubtask bool, ui *console.C
 		selected = choices[i]
 	}
 
+	// The store is generic; project containment and routing are workflow policy.
+	// ProjectRoot comes from the resolved document, including explicit targets
+	// in archives or other projects. Conversion issues belong to validation.
+	if selected.ProjectRoot == "" {
+		return agent.Request{}, fmt.Errorf(
+			"task document is not inside a .shemiq project: %s", selected.Path,
+		)
+	}
+	if selected.Type != task.TypeTopLevel {
+		return agent.Request{}, fmt.Errorf("expected type: top-level: %s", selected.Path)
+	}
+	if selected.Title == "" {
+		return agent.Request{}, fmt.Errorf("empty top-level task title: %s", selected.Path)
+	}
 	resolved := agent.Request{DocumentPath: selected.Path, ProjectRoot: selected.ProjectRoot}
 	switch selected.Status {
 	case "new":
@@ -72,15 +98,6 @@ func resolveRefinement(cwd, path, subtask string, hasSubtask bool, ui *console.C
 		}
 		resolved.Flow = agent.RefineTopLevel
 	case "refined":
-		// A top-level picker only needs titles/statuses; read subtasks of the
-		// chosen document so unrelated unfinished tasks cannot block routing.
-		if path == "" {
-			var err error
-			selected, err = task.ReadTopLevelTask(cwd, selected.Path)
-			if err != nil {
-				return agent.Request{}, err
-			}
-		}
 		title, err := chooseSubtask(selected.Subtasks, subtask, hasSubtask, ui)
 		if err != nil {
 			return agent.Request{}, err
@@ -94,7 +111,9 @@ func resolveRefinement(cwd, path, subtask string, hasSubtask bool, ui *console.C
 	return resolved, nil
 }
 
-func chooseSubtask(subtasks []task.Task, title string, exact bool, ui *console.Console) (string, error) {
+func chooseSubtask(
+	subtasks []task.Task, title string, exact bool, ui *console.Console,
+) (string, error) {
 	if exact {
 		var matches []task.Task
 		for _, sub := range subtasks {
@@ -108,6 +127,12 @@ func chooseSubtask(subtasks []task.Task, title string, exact bool, ui *console.C
 		if len(matches) != 1 {
 			return "", fmt.Errorf("ambiguous subtask title: %q", title)
 		}
+		if matches[0].Title == "" {
+			return "", fmt.Errorf("empty subtask title")
+		}
+		if matches[0].Type != task.TypeTask {
+			return "", fmt.Errorf("subtask %q is not type: task", title)
+		}
 		if matches[0].Status != "new" {
 			return "", fmt.Errorf("subtask %q is not new", title)
 		}
@@ -115,7 +140,7 @@ func chooseSubtask(subtasks []task.Task, title string, exact bool, ui *console.C
 	}
 	var labels []string
 	for _, sub := range subtasks {
-		if sub.Status == "new" {
+		if sub.Type == task.TypeTask && sub.Status == "new" && sub.Title != "" {
 			labels = append(labels, sub.Title)
 		}
 	}

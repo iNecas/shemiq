@@ -6,31 +6,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 )
-
-var uuidV4 = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-
-var knownMetadataFields = map[string]struct{}{
-	"type":   {},
-	"parent": {},
-	"source": {},
-	"status": {},
-	"uuid":   {},
-}
-
-var validTypes = map[string]struct{}{
-	"top-level": {},
-	"task":      {},
-}
-
-var validStatuses = map[string]struct{}{
-	"new":     {},
-	"refined": {},
-	"done":    {},
-}
 
 // Validate scans selected Markdown files and their existing local references.
 // An empty path selects the nearest existing .shemiq directory; it never
@@ -278,18 +256,6 @@ func statusRank(d directive) (int, bool) {
 	return 0, false
 }
 
-// Routing uses the same status rules as validation without running Validate:
-// unrelated links or unfinished source files must not block a choice.
-func requireDirectiveType(d directive, want string) error {
-	if !d.parseable || d.repeated["type"] {
-		return fmt.Errorf("malformed %s directive", want)
-	}
-	if d.fields["type"].value != want {
-		return fmt.Errorf("expected type: %s", want)
-	}
-	return nil
-}
-
 func directiveStatus(d directive) (string, error) {
 	if d.repeated["status"] {
 		return "", fmt.Errorf("repeated status")
@@ -449,37 +415,18 @@ func validateDirective(path string, directive directive) ([]Issue, error) {
 	sort.Slice(keys, func(i, j int) bool { return fields[keys[i]].line < fields[keys[j]].line })
 	for _, key := range keys {
 		field := fields[key]
-		message := ""
-		if _, known := knownMetadataFields[key]; !known {
-			message = "unknown metadata field: " + key
-		} else if field.value == "" {
-			message = "empty metadata field: " + key
-		} else {
-			switch key {
-			case "type":
-				if _, valid := validTypes[field.value]; !valid {
-					message = "invalid type: " + field.value
+		message := localFieldMessage(key, field.value)
+		if message == "" && (key == "parent" || key == "source") {
+			target := referencePath(path, field.value)
+			info, err := os.Stat(target)
+			if os.IsNotExist(err) {
+				if key == "parent" {
+					message = "parent is not an existing file: " + field.value
 				}
-			case "status":
-				if _, valid := validStatuses[field.value]; !valid {
-					message = "invalid status: " + field.value
-				}
-			case "uuid":
-				if !uuidV4.MatchString(field.value) {
-					message = "invalid UUIDv4: " + field.value
-				}
-			case "parent", "source":
-				target := referencePath(path, field.value)
-				info, err := os.Stat(target)
-				if os.IsNotExist(err) {
-					if key == "parent" {
-						message = "parent is not an existing file: " + field.value
-					}
-				} else if err != nil {
-					return nil, fmt.Errorf("inspect %s %s: %w", key, target, err)
-				} else if !info.Mode().IsRegular() {
-					message = key + " is not an existing file: " + field.value
-				}
+			} else if err != nil {
+				return nil, fmt.Errorf("inspect %s %s: %w", key, target, err)
+			} else if !info.Mode().IsRegular() {
+				message = key + " is not an existing file: " + field.value
 			}
 		}
 		if message != "" {

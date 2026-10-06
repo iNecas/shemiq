@@ -1,0 +1,303 @@
+package task
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/iNecas/shemiq/internal/utils"
+)
+
+func TestStoreScopeAndSnapshots(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewStore(root, "")
+	if err != nil || store.scope != nil || len(store.documents) != 0 {
+		t.Fatalf("construction must be lazy: store=%+v err=%v", store, err)
+	}
+	if _, err := store.TopLevelTasks(); err == nil {
+		t.Fatal("read without a project succeeded")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".shemiq")); !os.IsNotExist(err) {
+		t.Fatal("read created a project")
+	}
+	active := filepath.Join(root, ".shemiq", "tasks")
+	a := storeFixture(t, active, "a/top-level.md", utils.Dedent(`
+		# A
+		:::shemiq
+		type: task
+		:::
+		`))
+	b := storeFixture(t, active, "b/top-level.md", utils.Dedent(`
+		# B
+		:::shemiq
+		type: top-level
+		status: done
+		:::
+		`))
+	archived := storeFixture(t, root, ".shemiq/archive/old/top-level.md", utils.Dedent(`
+		# Archived
+		:::shemiq
+		type: top-level
+		:::
+		`))
+	tasks, err := store.TopLevelTasks()
+	if err != nil || len(tasks) != 2 || tasks[0].Path != a || tasks[1].Path != b {
+		t.Fatalf("default candidates: tasks=%+v err=%v", tasks, err)
+	}
+	// A later validation operation may load an out-of-scope reference. It must
+	// not widen public queries just because the document is now cached.
+	if _, err := store.loadDocument(archived, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.TaskByPath(archived); err == nil {
+		t.Fatal("cached archive escaped default query scope")
+	}
+	if err := os.WriteFile(b, []byte(utils.Dedent(`
+		:::shemiq
+		malformed
+		`)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(active, "alias.md")
+	if err := os.Symlink(b, alias); err != nil {
+		t.Fatal(err)
+	}
+	cached, err := store.TaskByPath(alias)
+	if err != nil || cached.Title != "B" || cached.Status != "done" || cached.Path != b ||
+		cached.document != tasks[1].document {
+		t.Fatalf("alias did not reuse snapshot: task=%+v err=%v", cached, err)
+	}
+	if _, err := store.loadDocument(b, true); err == nil {
+		t.Fatal("private refresh did not see syntax error")
+	}
+	if store.documents[b] != cached.document {
+		t.Fatal("failed refresh replaced the cached snapshot")
+	}
+	storeFixture(t, active, "b/top-level.md", utils.Dedent(`
+		:::shemiq
+		status: new
+		:::
+		# Updated
+		:::shemiq
+		type: top-level
+		status: refined
+		:::
+		`))
+	refreshed, err := store.loadDocument(b, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.TaskByPath(alias)
+	if err != nil || refreshed.Title != "Updated" || updated.Status != "refined" ||
+		updated.document != refreshed.document || updated.document == cached.document {
+		t.Fatalf("refresh did not replace task's document: task=%+v err=%v", updated, err)
+	}
+	if len(store.documents) != 3 || store.documents[a] != tasks[0].document {
+		t.Fatal("refresh lost other documents' snapshots")
+	}
+	if err := os.Mkdir(filepath.Join(active, "missing"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.TopLevelTasks(); err == nil ||
+		!strings.Contains(err.Error(), "missing/top-level.md") {
+		t.Fatalf("missing conventional document: %v", err)
+	}
+}
+
+func TestStoreExplicitScopes(t *testing.T) {
+	root := t.TempDir()
+	selected := filepath.Join(root, "documents")
+	a := storeFixture(t, selected, "a.MARKDOWN", utils.Dedent(`
+		# A
+		:::shemiq
+		type: top-level
+		:::
+		`))
+	storeFixture(t, selected, "nested/b.MD", utils.Dedent(`
+		# B
+		:::shemiq
+		type: top-level
+		:::
+		`))
+	child := storeFixture(t, selected, "nested/child.md", utils.Dedent(`
+		# Child
+		:::shemiq
+		type: task
+		:::
+		`))
+	storeFixture(t, selected, "ignored.txt", utils.Dedent(`
+		:::shemiq
+		malformed
+		`))
+	outside := storeFixture(t, root, "outside.md", utils.Dedent(`
+		# Outside
+		:::shemiq
+		type: top-level
+		:::
+		`))
+	store, err := NewStore(root, "documents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := store.TopLevelTasks()
+	if err != nil || len(tasks) != 2 || tasks[0].Path != a || tasks[1].Title != "B" {
+		t.Fatalf("explicit directory: tasks=%+v err=%v", tasks, err)
+	}
+	if _, err := store.TaskByPath(outside); err == nil {
+		t.Fatal("directory scope allowed an outside query")
+	}
+	if err := os.Symlink(outside, filepath.Join(selected, "escape.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.TaskByPath("documents/escape.md"); err == nil {
+		t.Fatal("symlink escaped directory scope")
+	}
+	fileStore, err := NewStore(root, "documents/a.MARKDOWN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err = fileStore.TopLevelTasks()
+	if err != nil || len(tasks) != 1 || tasks[0].ProjectRoot != "" {
+		t.Fatalf("generic explicit file: tasks=%+v err=%v", tasks, err)
+	}
+	if _, err := fileStore.TaskByPath(child); err == nil {
+		t.Fatal("file scope allowed another document")
+	}
+	childStore, err := NewStore(root, child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tasks, err := childStore.TopLevelTasks(); err != nil || len(tasks) != 0 {
+		t.Fatalf("child is not a top-level candidate: tasks=%+v err=%v", tasks, err)
+	}
+}
+
+func TestStoreEntryAndChildAreDistinct(t *testing.T) {
+	root, other := t.TempDir(), t.TempDir()
+	child := storeFixture(t, other, ".shemiq/archive/child.md", utils.Dedent(`
+		:::shemiq
+		malformed
+		`))
+	parent := storeFixture(t, root, ".shemiq/tasks/example/top-level.md", utils.Dedent(`
+		# Parent
+
+		:::shemiq
+		type: top-level
+		:::
+
+		## Tasks
+
+		### Entry title
+		:::shemiq
+		type: task
+		source: ./child.md
+		:::
+
+		### Not created
+		:::shemiq
+		type: task
+		source: ./missing.md
+		status: refined
+		:::
+
+		### Ordinary section
+		Just prose.
+		`))
+	if err := os.Symlink(child, filepath.Join(filepath.Dir(parent), "child.md")); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore(root, filepath.Dir(parent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	top, err := store.TaskByPath(filepath.Dir(parent))
+	if err != nil || top.Status != "new" || top.Type != TypeTopLevel || len(top.Subtasks) != 2 {
+		t.Fatalf("parent query must not load children: task=%+v err=%v", top, err)
+	}
+	entry := top.Subtasks[0]
+	if top.document != store.documents[parent] || entry.document != top.document ||
+		top.Subtasks[1].document != top.document {
+		t.Fatal("parent and entries must reference their defining document")
+	}
+	if entry.Title != "Entry title" || entry.Status != "new" ||
+		entry.Path != child || entry.ProjectRoot != root {
+		t.Fatalf("unexpected entry representation: %+v", entry)
+	}
+	if top.Subtasks[1].Path != filepath.Join(filepath.Dir(parent), "missing.md") {
+		t.Fatalf("uncreated target lost: %+v", top.Subtasks[1])
+	}
+	storeFixture(t, other, ".shemiq/archive/child.md", utils.Dedent(`
+		# Child title
+		:::shemiq
+		type: task
+		status: done
+		:::
+		`))
+	childStore, err := NewStore(root, child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standalone, err := childStore.TaskByPath(child)
+	if err != nil || standalone.Title != "Child title" || standalone.Status != "done" ||
+		standalone.ProjectRoot != other || standalone.section == entry.section ||
+		standalone.document != childStore.documents[child] || standalone.document == entry.document {
+		t.Fatalf("unexpected child representation: task=%+v err=%v", standalone, err)
+	}
+}
+
+func TestStorePrimaryStructure(t *testing.T) {
+	root := t.TempDir()
+	path := storeFixture(t, root, "structure.md", utils.Dedent(`
+		:::shemiq
+		status: invalid
+		:::
+		# First
+		Prose prevents adjacency.
+		:::shemiq
+		type: top-level
+		:::
+		# Later valid definition
+		:::shemiq
+		type: top-level
+		:::
+		`))
+	store, err := NewStore(root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.TaskByPath(path)
+	if err != nil || got.Title != "First" || got.Status != "" ||
+		got.Type != "" || len(got.Issues) != 1 {
+		t.Fatalf("must not skip first primary heading: task=%+v err=%v", got, err)
+	}
+	if got.document != store.documents[path] || len(got.document.root.directives) != 1 {
+		t.Fatal("task's document or metadata-only definition not retained")
+	}
+	path = storeFixture(t, root, "metadata.md", utils.Dedent(`
+		:::shemiq
+		status: new
+		:::
+		`))
+	store, err = NewStore(root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.TaskByPath(path)
+	if err != nil || got.Path != path || got.Status != "" || len(got.Issues) != 1 ||
+		got.document != store.documents[path] {
+		t.Fatalf("headingless query: task=%+v err=%v", got, err)
+	}
+}
+
+func storeFixture(t *testing.T, root, relative, data string) string {
+	t.Helper()
+	path := filepath.Join(root, relative)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}

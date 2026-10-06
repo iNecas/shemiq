@@ -8,14 +8,6 @@ import (
 
 var metadataKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
 
-// Issue is a validation finding. Fixed is true when --fix repaired metadata.
-type Issue struct {
-	Path    string
-	Line    int
-	Message string
-	Fixed   bool
-}
-
 type metadataField struct {
 	value      string
 	line       int

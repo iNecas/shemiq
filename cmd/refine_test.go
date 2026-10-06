@@ -13,10 +13,14 @@ import (
 	"github.com/iNecas/shemiq/internal/utils"
 )
 
-func TestRefineExplicitPathsAndSelection(t *testing.T) {
+func TestRefineLaunchAndSelection(t *testing.T) {
 	root := t.TempDir()
 	newPath := refineFixture(t, root, "tasks", "first", "First", "", "")
-	archived := refineFixture(t, root, "archive", "old one", "Old", "status: new\n", "")
+	otherName := filepath.Join(filepath.Dir(newPath), "other.MARKDOWN")
+	if err := os.WriteFile(otherName, []byte(readTestFile(t, newPath)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	refineFixture(t, root, "tasks", "done", "Done", "status: done\n", "")
 	subtasks := utils.Dedent(`
 		### Already refined
 		:::shemiq
@@ -32,24 +36,22 @@ func TestRefineExplicitPathsAndSelection(t *testing.T) {
 		:::
 		`)
 	refined := refineFixture(t, root, "tasks", "second", "Second", "status: refined\n", subtasks)
-	cwd := filepath.Join(root, "src")
-	if err := os.Mkdir(cwd, 0755); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(cwd)
+	t.Chdir(root)
+	title := `A "quoted" title`
+	taskPrompt := "Select a task:\n1. First\n2. Second\nSelection: "
+	subtaskPrompt := "Select a subtask:\n1. " + title + "\nSelection: "
 	for _, tc := range []struct {
 		name, input, path, title string
 		args                     []string
 		diag                     string
 	}{
-		{"directory", "", newPath, "", []string{"refine", filepath.Dir(newPath)}, ""},
-		{"file from nested cwd", "", newPath, "", []string{"refine", filepath.Join("..", ".shemiq", "tasks", "first", "top-level.md")}, ""},
-		{"archived", "", archived, "", []string{"refine", filepath.Dir(archived)}, ""},
-		{"exact title", "", refined, "A \"quoted\" title", []string{"refine", refined, "--subtask", "A \"quoted\" title"}, ""},
-		{"two picks", "2\n1\n", refined, "A \"quoted\" title", []string{"refine"}, "Select a task:\n1. First\n2. Second\nSelection: Select a subtask:\n1. A \"quoted\" title\nSelection: "},
-		{"retry both picks", "\nno\n2\n0\n1\n", refined, "A \"quoted\" title", []string{"refine"}, "Select a task:\n1. First\n2. Second\nSelection: Please enter a number from 1 to 2.\nSelection: Please enter a number from 1 to 2.\nSelection: Select a subtask:\n1. A \"quoted\" title\nSelection: Please enter a number from 1 to 1.\nSelection: "},
-		{"pick task then exact subtask", "2\n", refined, "A \"quoted\" title", []string{"refine", "--subtask", "A \"quoted\" title"}, "Select a task:\n1. First\n2. Second\nSelection: "},
-		{"one subtask pick", "1\n", refined, "A \"quoted\" title", []string{"refine", refined}, "Select a subtask:\n1. A \"quoted\" title\nSelection: "},
+		{"explicit top-level", "", otherName, "", []string{"refine", otherName}, ""},
+		{"exact title", "", refined, title,
+			[]string{"refine", refined, "--subtask", title}, ""},
+		{"interactive selection", "2\n1\n", refined, title,
+			[]string{"refine"}, taskPrompt + subtaskPrompt},
+		{"pick task then exact subtask", "2\n", refined, title,
+			[]string{"refine", "--subtask", title}, taskPrompt},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			launcher := &recordingLauncher{}
@@ -91,7 +93,6 @@ func TestRefineRejections(t *testing.T) {
 		:::
 		`))
 	invalid := refineFixture(t, root, "archive", "invalid", "Invalid", "status: progress\n", "")
-	repeated := refineFixture(t, root, "archive", "repeated", "Repeated", "status: new\nstatus: refined\n", "")
 	noNew := refineFixture(t, root, "archive", "no-new", "No new", "status: refined\n", utils.Dedent(`
 		### Finished
 		:::shemiq
@@ -99,8 +100,9 @@ func TestRefineRejections(t *testing.T) {
 		status: done
 		:::
 		`))
-	wrongFile := filepath.Join(filepath.Dir(newPath), "other.md")
-	if err := os.WriteFile(wrongFile, []byte("wrong filename"), 0644); err != nil {
+	childPath := filepath.Join(filepath.Dir(newPath), "child.md")
+	child := "# Child\n:::shemiq\ntype: task\n:::\n"
+	if err := os.WriteFile(childPath, []byte(child), 0644); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
@@ -110,17 +112,15 @@ func TestRefineRejections(t *testing.T) {
 	}{
 		{"done", "", "is done", []string{"refine", done}},
 		{"new with subtask", "", "cannot specify --subtask", []string{"refine", newPath, "--subtask", "Same"}},
-		{"ambiguous", "", "ambiguous subtask", []string{"refine", refined, "--subtask", "Same"}},
+		{"ambiguous exact title", "", "ambiguous subtask",
+			[]string{"refine", refined, "--subtask", "Same"}},
+		{"ambiguous interactive title", "1\n", "ambiguous subtask", []string{"refine", refined}},
 		{"ineligible", "", "is not new", []string{"refine", refined, "--subtask", "Finished"}},
 		{"no eligible", "", "no new subtasks", []string{"refine", noNew}},
 		{"not found", "", "subtask not found", []string{"refine", refined, "--subtask", "Other"}},
-		{"invalid status", "", "invalid status", []string{"refine", invalid}},
-		{"repeated status", "", "repeated status", []string{"refine", repeated}},
-		{"blank then EOF", "\n", "selection cancelled", []string{"refine", refined}},
-		{"invalid then EOF", "3\n", "selection cancelled", []string{"refine", refined}},
-		{"EOF", "", "selection cancelled", []string{"refine"}},
-		{"EOF after partial line", "1", "selection cancelled", []string{"refine", refined}},
-		{"wrong filename", "", "expected top-level.md", []string{"refine", wrongFile}},
+		{"invalid status", "", "unsupported top-level status", []string{"refine", invalid}},
+		{"cancel selection", "", "selection cancelled", []string{"refine", refined}},
+		{"wrong task type", "", "expected type: top-level", []string{"refine", childPath}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			launcher := &recordingLauncher{}
@@ -132,44 +132,120 @@ func TestRefineRejections(t *testing.T) {
 	}
 }
 
-func TestRefineProjectAndActiveDocumentRequirements(t *testing.T) {
+func TestRefineStoreRouting(t *testing.T) {
 	root := t.TempDir()
-	valid := refineFixture(t, root, "tasks", "valid", "Valid", "", "")
 	t.Chdir(root)
-	missing := filepath.Join(root, ".shemiq", "tasks", "broken")
-	if err := os.Mkdir(missing, 0755); err != nil {
-		t.Fatal(err)
-	}
-	launcher := &recordingLauncher{}
-	out, diag, err := runRefineCommand(t, launcher, "1\n", "refine")
-	if err == nil || out != "" || !strings.Contains(diag, filepath.Join(missing, "top-level.md")) || strings.Contains(diag, "Select a task:") || launcher.calls != 0 {
-		t.Fatalf("missing active document: out=%q diag=%q err=%v calls=%d", out, diag, err, launcher.calls)
-	}
-	// Explicit paths locate their own project, even when the caller has none.
-	other := t.TempDir()
-	t.Chdir(other)
-	out, diag, err = runRefineCommand(t, launcher, "", "refine", valid)
-	want := agent.Request{Flow: agent.RefineTopLevel, DocumentPath: valid, ProjectRoot: root}
-	if err != nil || diag != "" || out != "" || launcher.calls != 1 || launcher.request != want {
-		t.Fatalf("explicit cross-project path: out=%q diag=%q err=%v request=%+v", out, diag, err, launcher.request)
-	}
-	launcher.calls = 0
-	out, diag, err = runRefineCommand(t, launcher, "", "refine")
-	if err == nil || out != "" || !strings.Contains(diag, "no .shemiq directory") || launcher.calls != 0 {
-		t.Fatalf("no project: out=%q diag=%q err=%v calls=%d", out, diag, err, launcher.calls)
-	}
-	outside := filepath.Join(other, "top-level.md")
-	if err := os.WriteFile(outside, []byte(utils.Dedent(`
-		# Outside
+	path := refineFixture(t, root, "tasks", "example", "Example", utils.Dedent(`
+		status: refined
+		uuid: invalid
+		unknown: ignored by refinement
+		`), utils.Dedent(`
+		### Invalid status
+		:::shemiq
+		type: task
+		status: typo
+		:::
+
+		### Repeated status
+		:::shemiq
+		type: task
+		status: new
+		status: done
+		:::
+
+		### Wrong type
 		:::shemiq
 		type: top-level
 		:::
-		`)), 0644); err != nil {
+
+		### Usable
+		:::shemiq
+		type: task
+		source: ./missing.md
+		uuid: invalid
+		:::
+		`))
+	for _, tc := range []struct {
+		name, input, title, message string
+	}{
+		{"pick usable despite issues", "1\n", "", ""},
+		{"exact usable despite issues", "", "Usable", ""},
+		{"invalid never defaults to new", "", "Invalid status", "is not new"},
+		{"repeated never defaults to new", "", "Repeated status", "is not new"},
+		{"exact wrong type", "", "Wrong type", "is not type: task"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := []string{"refine", path}
+			if tc.title != "" {
+				args = append(args, "--subtask", tc.title)
+			}
+			launcher := &recordingLauncher{}
+			out, diag, err := runRefineCommand(t, launcher, tc.input, args...)
+			if tc.message != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.message) || launcher.calls != 0 {
+					t.Fatalf("diag=%q err=%v calls=%d", diag, err, launcher.calls)
+				}
+			} else if err != nil || out != "" || launcher.calls != 1 || launcher.request.SubtaskTitle != "Usable" {
+				t.Fatalf("out=%q diag=%q err=%v request=%+v", out, diag, err, launcher.request)
+			}
+			if tc.input != "" && diag != "Select a subtask:\n1. Usable\nSelection: " {
+				t.Fatalf("ineligible entries leaked into picker: %q", diag)
+			}
+		})
+	}
+	// Parser syntax is fatal even when it is unrelated to routing fields.
+	before := readTestFile(t, path)
+	if err := os.WriteFile(path, []byte(before+"\n:::shemiq\nmalformed\n:::\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	out, diag, err = runRefineCommand(t, launcher, "", "refine", outside)
-	if err == nil || out != "" || !strings.Contains(diag, "not inside a .shemiq project") || launcher.calls != 0 {
-		t.Fatalf("outside project: out=%q diag=%q err=%v calls=%d", out, diag, err, launcher.calls)
+	launcher := &recordingLauncher{}
+	_, _, err := runRefineCommand(t, launcher, "", "refine", path, "--subtask", "Usable")
+	if err == nil || !strings.Contains(err.Error(), "malformed metadata field") || launcher.calls != 0 {
+		t.Fatalf("syntax failure: err=%v calls=%d", err, launcher.calls)
+	}
+	// Fenced syntax examples are not metadata and cannot block refinement.
+	fenced := before + "\n```markdown\n:::shemiq\nmalformed\n```\n"
+	if err := os.WriteFile(path, []byte(fenced), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = runRefineCommand(t, launcher, "", "refine", path, "--subtask", "Usable")
+	if err != nil || launcher.calls != 1 || readTestFile(t, path) != fenced {
+		t.Fatalf("fenced example or read-only failure: err=%v calls=%d", err, launcher.calls)
+	}
+}
+
+func TestRefineResolvedTargetContainment(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	// The caller has no project; containment and launch ownership follow the target.
+	t.Chdir(outside)
+	target := filepath.Join(outside, "top-level.md")
+	if err := os.WriteFile(target, []byte("# Outside\n:::shemiq\ntype: top-level\n:::\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	path := refineFixture(t, root, "tasks", "alias", "Alias", "", "")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+	launcher := &recordingLauncher{}
+	_, _, err := runRefineCommand(t, launcher, "", "refine", path)
+	if err == nil || !strings.Contains(err.Error(), "not inside a .shemiq project") || launcher.calls != 0 {
+		t.Fatalf("lexical containment allowed escape: err=%v calls=%d", err, launcher.calls)
+	}
+	// An explicit alias to a different real project is allowed; launch there.
+	other := t.TempDir()
+	realPath := refineFixture(t, other, "archive", "real", "Real", "", "")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realPath, path); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = runRefineCommand(t, launcher, "", "refine", path)
+	if err != nil || launcher.calls != 1 || launcher.request.DocumentPath != realPath || launcher.request.ProjectRoot != other {
+		t.Fatalf("resolved launch: err=%v request=%+v", err, launcher.request)
 	}
 }
 

@@ -1,14 +1,22 @@
 package task
 
-import (
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+import "regexp"
 
-	"github.com/iNecas/shemiq/internal/utils"
+var uuidV4 = regexp.MustCompile(
+	`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
 )
+
+var knownMetadataFields = map[string]struct{}{
+	"type": {}, "parent": {}, "source": {}, "status": {}, "uuid": {},
+}
+
+var validTypes = map[string]struct{}{
+	"top-level": {}, "task": {},
+}
+
+var validStatuses = map[string]struct{}{
+	"new": {}, "refined": {}, "done": {},
+}
 
 type TaskType string
 
@@ -17,9 +25,18 @@ const (
 	TypeTask     TaskType = "task"
 )
 
-// Task represents a top-level document or an entry in its task list. Subtasks
-// are read from the parent document; their own files may not exist yet, so
-// Path and ProjectRoot are only set on the top-level task.
+// Issue is a located metadata finding. Fixed is true after a validation repair.
+type Issue struct {
+	Path    string
+	Line    int
+	Message string
+	Fixed   bool
+}
+
+// Task represents one defining section. A standalone task's Path is its file;
+// a parent-list entry's Path is its source target (which need not exist).
+// Its private document reference always identifies the defining file, even for
+// an entry whose Path points elsewhere. Referenced metadata is never substituted.
 type Task struct {
 	Type        TaskType
 	Title       string
@@ -27,129 +44,121 @@ type Task struct {
 	Path        string
 	ProjectRoot string
 	Subtasks    []Task
+	Issues      []Issue
+
+	document *parsedDocument
+	section  *parsedSection
 }
 
-// FindProjectDirectory returns the nearest .shemiq directory, or the path
-// where one should be created if none exists above the invocation directory.
-func FindProjectDirectory(cwd string) (string, error) {
-	for dir := cwd; ; dir = filepath.Dir(dir) {
-		projectDir := filepath.Join(dir, ".shemiq")
-		info, err := os.Stat(projectDir)
-		if err == nil && info.IsDir() {
-			return projectDir, nil
-		}
-		if err != nil && !os.IsNotExist(err) {
-			return "", fmt.Errorf("inspect %s: %w", projectDir, err)
-		}
-		if parent := filepath.Dir(dir); parent == dir {
-			return filepath.Join(cwd, ".shemiq"), nil
-		}
+func sectionTask(doc *parsedDocument, section *parsedSection, parentList bool) Task {
+	result := Task{
+		Title: section.title, ProjectRoot: documentProjectRoot(doc.path),
+		document: doc, section: section,
 	}
+	if section.title == "" {
+		result.Issues = append(result.Issues, Issue{
+			Path: doc.path, Line: section.heading.line, Message: "empty task title",
+		})
+	}
+	directive := adjacentDirective(doc, section)
+	if directive == nil {
+		result.Issues = append(result.Issues, Issue{
+			Path: doc.path, Line: section.heading.line,
+			Message: "missing heading-adjacent task directive",
+		})
+		return result
+	}
+	fields, issues := directiveFields(doc.path, directive)
+	result.Type = TaskType(fields["type"].value)
+	result.Status = fields["status"].value
+	if !hasParsedField(directive, "status") {
+		result.Status = "new"
+	}
+	result.Issues = append(result.Issues, issues...)
+	// Type is required for a task query, not for metadata-only validation.
+	if !hasParsedField(directive, "type") {
+		result.Issues = append(result.Issues, Issue{
+			Path: doc.path, Line: directive.opening.line, Message: "missing task type",
+		})
+	}
+	if parentList {
+		if source, usable := fields["source"]; usable {
+			result.Path = resolvedReferencePath(doc.path, source.value)
+		}
+	} else {
+		result.Path = doc.path
+	}
+	return result
 }
 
-// CreateTopLevelTask writes a task independently of how its title was obtained.
-// projectDir is the path to the project's .shemiq directory.
-func CreateTopLevelTask(projectDir, description, title string) (string, error) {
-	if strings.TrimSpace(description) == "" {
-		return "", fmt.Errorf("description is required")
+// directiveFields returns unique, usable fields and local findings on demand.
+// Validation can reuse this for any directive, including metadata-only ones.
+func directiveFields(path string, parsed *parsedDirective) (map[string]parsedField, []Issue) {
+	fields := make(map[string]parsedField)
+	var issues []Issue
+	counts := make(map[string]int)
+	for _, field := range parsed.fields {
+		counts[field.key]++
 	}
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return "", fmt.Errorf("title is required")
-	}
-	if strings.ContainsAny(title, "\r\n") {
-		return "", fmt.Errorf("title must be one line")
-	}
-	slug := taskSlug(title)
-	if slug == "" {
-		return "", fmt.Errorf("title must contain an ASCII letter or digit")
-	}
-
-	projectDir, err := filepath.Abs(projectDir)
-	if err != nil {
-		return "", fmt.Errorf("resolve project directory: %w", err)
-	}
-	id, err := NewUUID()
-	if err != nil {
-		return "", err
-	}
-	tasksDir := filepath.Join(projectDir, "tasks")
-	if err := os.MkdirAll(tasksDir, 0755); err != nil {
-		return "", fmt.Errorf("create tasks directory %s: %w", tasksDir, err)
-	}
-	taskDir := filepath.Join(tasksDir, slug)
-	if err := os.Mkdir(taskDir, 0755); err != nil {
-		return "", fmt.Errorf("create task directory %s: %w", taskDir, err)
-	}
-	path := filepath.Join(taskDir, "top-level.md")
-	if err := os.WriteFile(path, []byte(topLevelDocument(title, description, id)), 0644); err != nil {
-		return "", errors.Join(fmt.Errorf("write %s: %w", path, err), cleanupTask(path, taskDir))
-	}
-	return path, nil
-}
-
-func taskSlug(title string) string {
-	var slug strings.Builder
-	separator := false
-	for i := 0; i < len(title); i++ {
-		c := title[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
+	seen := make(map[string]bool)
+	for _, field := range parsed.fields {
+		if seen[field.key] {
+			issues = append(issues, Issue{
+				Path: path, Line: field.span.line,
+				Message: "repeated metadata field: " + field.key,
+			})
 		}
-		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
-			if separator && slug.Len() > 0 {
-				slug.WriteByte('-')
+		seen[field.key] = true
+		if message := localFieldMessage(field.key, field.value); message != "" {
+			issues = append(issues, Issue{
+				Path: path, Line: field.span.line, Message: message,
+			})
+		} else if counts[field.key] == 1 {
+			fields[field.key] = field
+		}
+	}
+	if counts["source"] > 0 && counts["uuid"] > 0 {
+		for _, field := range parsed.fields {
+			if field.key == "uuid" {
+				issues = append(issues, Issue{
+					Path: path, Line: field.span.line,
+					Message: "source and uuid are mutually exclusive",
+				})
+				break
 			}
-			slug.WriteByte(c)
-			separator = false
-		} else {
-			separator = true
+		}
+		delete(fields, "source")
+		delete(fields, "uuid")
+	} else if counts["source"] == 0 && counts["uuid"] == 0 {
+		issues = append(issues, Issue{
+			Path: path, Line: parsed.opening.line, Message: "missing uuid",
+		})
+	}
+	return fields, issues
+}
+
+// Shared by task conversion and legacy validation.
+// Local conversion never checks reference existence or cross-document semantics.
+func localFieldMessage(key, value string) string {
+	if _, known := knownMetadataFields[key]; !known {
+		return "unknown metadata field: " + key
+	}
+	if value == "" {
+		return "empty metadata field: " + key
+	}
+	switch key {
+	case "type":
+		if _, valid := validTypes[value]; !valid {
+			return "invalid type: " + value
+		}
+	case "status":
+		if _, valid := validStatuses[value]; !valid {
+			return "invalid status: " + value
+		}
+	case "uuid":
+		if !uuidV4.MatchString(value) {
+			return "invalid UUIDv4: " + value
 		}
 	}
-	return slug.String()
-}
-
-func topLevelDocument(title, description, id string) string {
-	return fmt.Sprintf(utils.Dedent(`
-		# %s
-		:::shemiq
-		type: top-level
-		uuid: %s
-		:::
-
-		## Description
-
-		%s
-
-		## Context
-
-		[TBD]
-
-		## Interview
-
-		[TBD]
-
-		## Design
-
-		[TBD]
-
-		## Current status
-
-		[TBD]
-
-		## Tasks
-
-		[TBD]
-		`), title, id, description)
-}
-
-func cleanupTask(path, taskDir string) error {
-	var failures []error
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		failures = append(failures, fmt.Errorf("remove %s: %w", path, err))
-	}
-	if err := os.Remove(taskDir); err != nil {
-		failures = append(failures, fmt.Errorf("remove %s: %w", taskDir, err))
-	}
-	return errors.Join(failures...)
+	return ""
 }
