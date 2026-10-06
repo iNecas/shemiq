@@ -12,7 +12,7 @@ import (
 
 var newTaskUUIDLine = regexp.MustCompile(`(?m)^uuid: [0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
-func TestTaskNewDiscoversProject(t *testing.T) {
+func TestNewDiscoversProject(t *testing.T) {
 	project := t.TempDir()
 	if err := os.Mkdir(filepath.Join(project, ".shemiq"), 0755); err != nil {
 		t.Fatal(err)
@@ -23,7 +23,7 @@ func TestTaskNewDiscoversProject(t *testing.T) {
 	}
 	t.Chdir(nested)
 
-	stdout, stderr, err := runCommand("  My New Task!  \n", "task", "new", "Describe", "the task")
+	stdout, stderr, err := runCommand("  My New Task!  \n", "new", "Describe", "the task")
 	if err != nil {
 		t.Fatalf("command failed: %v\nstderr: %s", err, stderr)
 	}
@@ -81,10 +81,10 @@ func TestTaskNewDiscoversProject(t *testing.T) {
 	}
 }
 
-func TestTaskNewWithTitleFlag(t *testing.T) {
+func TestNewWithTitleFlag(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	stdout, stderr, err := runCommand("", "task", "new", "--title", "Command Line Title", "Describe", "the task")
+	stdout, stderr, err := runCommand("", "new", "--title", "Command Line Title", "Describe", "the task")
 	if err != nil {
 		t.Fatalf("command failed: %v\nstderr: %s", err, stderr)
 	}
@@ -113,10 +113,10 @@ func TestTaskNewWithTitleFlag(t *testing.T) {
 	}
 }
 
-func TestTaskNewCreatesProject(t *testing.T) {
+func TestNewCreatesProject(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	stdout, stderr, err := runCommand("Héllo  123\n", "task", "new", "--", "--some", "description")
+	stdout, stderr, err := runCommand("Héllo  123\n", "new", "--", "--some", "description")
 	if err != nil {
 		t.Fatalf("command failed: %v\nstderr: %s", err, stderr)
 	}
@@ -137,20 +137,20 @@ func TestTaskNewCreatesProject(t *testing.T) {
 	}
 }
 
-func TestTaskNewRejectsMissingInput(t *testing.T) {
+func TestNewRejectsMissingInput(t *testing.T) {
 	for _, tc := range []struct {
 		name, input, message string
 		args                 []string
 	}{
-		{"missing description", "Unused\n", "requires at least 1 arg(s)", []string{"task", "new"}},
-		{"blank description", "Unused\n", "description is required", []string{"task", "new", "  "}},
-		{"blank title", "  \n", "title is required", []string{"task", "new", "description"}},
-		{"blank title flag", "Fallback\n", "title is required", []string{"task", "new", "--title", "  ", "description"}},
-		{"multiline title flag", "", "title must be one line", []string{"task", "new", "--title", utils.Dedent(`
+		{"missing description", "Unused\n", "requires at least 1 arg(s)", []string{"new"}},
+		{"blank description", "Unused\n", "description is required", []string{"new", "  "}},
+		{"blank title", "  \n", "title is required", []string{"new", "description"}},
+		{"blank title flag", "Fallback\n", "title is required", []string{"new", "--title", "  ", "description"}},
+		{"multiline title flag", "", "title must be one line", []string{"new", "--title", utils.Dedent(`
 			First
 			Second`), "description"}},
-		{"EOF without title", "", "title is required", []string{"task", "new", "description"}},
-		{"empty slug", "é !\n", "ASCII letter or digit", []string{"task", "new", "description"}},
+		{"EOF without title", "", "title is required", []string{"new", "description"}},
+		{"empty slug", "é !\n", "ASCII letter or digit", []string{"new", "description"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -169,7 +169,27 @@ func TestTaskNewRejectsMissingInput(t *testing.T) {
 	}
 }
 
-func TestTaskNewDoesNotOverwrite(t *testing.T) {
+func TestRemovedTaskRoute(t *testing.T) {
+	stdout, stderr, err := runCommand("", "task", "new", "description")
+	if err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("error = %v, want unknown command", err)
+	}
+	if stdout != "" || !strings.Contains(stderr, "unknown command") {
+		t.Fatalf("stdout = %q, stderr = %q", stdout, stderr)
+	}
+}
+
+func TestBareCommandPointsToNew(t *testing.T) {
+	stdout, stderr, err := runCommand("")
+	if err == nil || !strings.Contains(err.Error(), "shemiq new <description...>") {
+		t.Fatalf("error = %v, want shemiq new guidance", err)
+	}
+	if stdout != "" || !strings.Contains(stderr, "shemiq new <description...>") {
+		t.Fatalf("stdout = %q, stderr = %q", stdout, stderr)
+	}
+}
+
+func TestNewDoesNotOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	taskDir := filepath.Join(dir, ".shemiq", "tasks", "same-task")
 	if err := os.MkdirAll(taskDir, 0755); err != nil {
@@ -180,7 +200,7 @@ func TestTaskNewDoesNotOverwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)
-	stdout, stderr, err := runCommand("Same Task\n", "task", "new", "new description")
+	stdout, stderr, err := runCommand("Same Task\n", "new", "new description")
 	if err == nil || !strings.Contains(stderr, "file exists") || stdout != "" {
 		t.Fatalf("error = %v, stdout = %q, stderr = %q", err, stdout, stderr)
 	}

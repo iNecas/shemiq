@@ -11,8 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newTaskCommand(result io.Writer) *cobra.Command {
-	taskCommand := &cobra.Command{Use: "task", Short: "Manage tasks"}
+func newNewCommand(result io.Writer) *cobra.Command {
 	var title string
 	newCommand := &cobra.Command{
 		Use:   "new <description...>",
@@ -47,8 +46,7 @@ func newTaskCommand(result io.Writer) *cobra.Command {
 		},
 	}
 	newCommand.Flags().StringVar(&title, "title", "", "Title for the new task (prompts if omitted)")
-	taskCommand.AddCommand(newCommand)
-	return taskCommand
+	return newCommand
 }
 
 func readTitle(prompt io.Writer, input io.Reader) (string, error) {

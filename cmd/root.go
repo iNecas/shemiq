@@ -22,10 +22,10 @@ func newRootCommand(result io.Writer) *cobra.Command {
 		Use:   "shemiq",
 		Short: "Manage Shemiq tasks",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("expected 'task new <description...>'")
+			return fmt.Errorf("expected 'shemiq new <description...>'")
 		},
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(newTaskCommand(result), newValidateCommand())
+	root.AddCommand(newNewCommand(result), newValidateCommand())
 	return root
 }

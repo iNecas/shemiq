@@ -10,7 +10,7 @@ Here is a task we need to create a shemiq top-level task for:
 
 Choose a concise, one-line title for the user's original description above. Load the
 `shemiq` skill for CLI availability and installation instructions. From the target
-project's working directory, run `shemiq task new --title <title> <description>`:
+project's working directory, run `shemiq new --title <title> <description>`:
 pass the title as the `--title` value and the **entire original description** as
 one argument. Shell-quote/escape both values safely; do not paste the description
 unquoted into a shell command or split it into words.

@@ -17,8 +17,8 @@ Some usage scenarios involve using the `shemiq` command. If the command is not p
 
 ## Creating a top-level task with the CLI
 
-- From the **target project's working directory**, run `shemiq task new --title <one-line title> <original description>` using the executable located above. Pass the whole description as **one safely shell-quoted argument** and quote the title too. The CLI discovers the nearest `.shemiq/` upwards or creates one in the working directory, derives the slug from the title, writes `.shemiq/tasks/<slug>/top-level.md`, rejects collisions, and prints the absolute file path. Report that printed path on success; surface CLI errors without guessing a path or creating the file manually.
-- This CLI creates **top-level tasks only** and assigns their UUIDs automatically. For subtasks, metadata edits, and other document changes, use the format below; do not claim `task new` supports them.
+- From the **target project's working directory**, run `shemiq new --title <one-line title> <original description>` using the executable located above. Pass the whole description as **one safely shell-quoted argument** and quote the title too. The CLI discovers the nearest `.shemiq/` upwards or creates one in the working directory, derives the slug from the title, writes `.shemiq/tasks/<slug>/top-level.md`, rejects collisions, and prints the absolute file path. Report that printed path on success; surface CLI errors without guessing a path or creating the file manually.
+- This CLI creates **top-level tasks only** and assigns their UUIDs automatically. For subtasks, metadata edits, and other document changes, use the format below; do not claim `shemiq new` supports them.
 
 ## Metadata and validation
 
