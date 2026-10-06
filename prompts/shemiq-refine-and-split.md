@@ -54,7 +54,11 @@ The document's body is later included verbatim in every subtask agent's prompt d
 
 ## Next step
 
-Once a shared understanding has been reached, Update the $1 with details.
+Once the user approves the design and task split, update $1 with the agreed
+context, design, and subtasks. Only after these are written, set `status: refined`
+in its top-level `:::shemiq` directive (add the field if absent). Do not mark it
+refined merely because this session ends or Pi exits. Keep each new subtask's
+parent-list status `new`.
 
 The original context provided to the task should be preserved. It can be
 reformulated to match the rest of the description, but the the information should

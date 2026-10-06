@@ -46,8 +46,13 @@ Once you understand what you're building, present the design in small sections (
 
 ## The written document
 
-Once everything is clear, write the results in separate shemiq task file in the same directory as the parent document.
-Ensure the shemiq parent/source metadata are on both sides.
+Once the user approves the refinement, write the agreed context and plan in a
+separate task file in the same directory as the parent document. If that file
+already exists, update it in place and preserve unrelated content; do not
+replace the whole file. Ensure its `type: task` directive has `parent:` pointing
+to $1, and that the matching task directive under `## Tasks` in $1 has `source:`
+pointing to the file. Set `status: refined` in **both** directives only after the
+approved plan has been written.
 
 The document's body is later included verbatim in every subtask agent's implementation.
 

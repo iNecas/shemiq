@@ -8,7 +8,7 @@ import (
 
 var metadataKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
 
-// Issue is a validation finding. Fixed is true only when --fix inserted a UUID.
+// Issue is a validation finding. Fixed is true when --fix repaired metadata.
 type Issue struct {
 	Path    string
 	Line    int
@@ -17,8 +17,10 @@ type Issue struct {
 }
 
 type metadataField struct {
-	value string
-	line  int
+	value      string
+	line       int
+	valueStart int
+	valueEnd   int
 }
 
 type directive struct {
@@ -76,7 +78,12 @@ func parseDocument(path string, data []byte) document {
 			if _, exists := current.fields[key]; exists {
 				doc.issues = append(doc.issues, Issue{path, line, "repeated metadata field: " + key, false})
 			} else {
-				current.fields[key] = metadataField{strings.TrimSpace(value), line}
+				trimmed := strings.TrimSpace(value)
+				valueStart := start + len(key) + 1
+				if trimmed != "" {
+					valueStart += strings.Index(value, trimmed)
+				}
+				current.fields[key] = metadataField{trimmed, line, valueStart, valueStart + len(trimmed)}
 			}
 		}
 		start = end

@@ -27,14 +27,14 @@ var validTypes = map[string]struct{}{
 }
 
 var validStatuses = map[string]struct{}{
-	"new":      {},
-	"progress": {},
-	"done":     {},
+	"new":     {},
+	"refined": {},
+	"done":    {},
 }
 
-// Validate scans the selected Markdown files. An empty path selects the nearest
-// existing .shemiq directory; it never creates a project. Operational failures
-// are returned separately from metadata issues.
+// Validate scans selected Markdown files and their existing local references.
+// An empty path selects the nearest existing .shemiq directory; it never
+// creates a project. Operational failures are separate from metadata issues.
 func Validate(cwd, path string, fix bool) ([]Issue, error) {
 	paths, err := selectMarkdown(cwd, path)
 	if err != nil {
@@ -54,6 +54,15 @@ func Validate(cwd, path string, fix bool) ([]Issue, error) {
 			repaired = append(repaired, fixed...)
 		}
 		// Recheck from disk: all unresolved findings describe the final state.
+		docs, err = readDocuments(paths)
+		if err != nil {
+			return nil, err
+		}
+		fixed, err := repairStatuses(docs)
+		if err != nil {
+			return nil, err
+		}
+		repaired = append(repaired, fixed...)
 		docs, err = readDocuments(paths)
 		if err != nil {
 			return nil, err
@@ -118,16 +127,58 @@ func isMarkdown(path string) bool {
 	return ext == ".md" || ext == ".markdown"
 }
 
+// readDocuments follows local references in both directions. A missing source is
+// expected while a task is awaiting refinement; a missing parent is diagnosed
+// by validateDirective. Each file is parsed only once, even for cyclic links.
 func readDocuments(paths []string) ([]document, error) {
-	docs := make([]document, 0, len(paths))
-	for _, path := range paths {
+	seen := make(map[string]document)
+	queue := append([]string(nil), paths...)
+	for len(queue) > 0 {
+		path := filepath.Clean(queue[0])
+		queue = queue[1:]
+		if _, loaded := seen[path]; loaded {
+			continue
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", path, err)
 		}
-		docs = append(docs, parseDocument(path, data))
+		doc := parseDocument(path, data)
+		seen[path] = doc
+		for _, directive := range doc.directives {
+			for _, key := range []string{"source", "parent"} {
+				field, ok := directive.fields[key]
+				if !ok || field.value == "" {
+					continue
+				}
+				target := referencePath(path, field.value)
+				info, err := os.Stat(target)
+				if os.IsNotExist(err) {
+					continue
+				}
+				if err != nil {
+					return nil, fmt.Errorf("inspect %s %s: %w", key, target, err)
+				}
+				if info.Mode().IsRegular() {
+					queue = append(queue, target)
+				}
+			}
+		}
+	}
+	paths = make([]string, 0, len(seen))
+	for path := range seen {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	docs := make([]document, 0, len(paths))
+	for _, path := range paths {
+		docs = append(docs, seen[path])
 	}
 	return docs, nil
+}
+
+func referencePath(path, value string) string {
+	return filepath.Clean(filepath.Join(filepath.Dir(path), value))
 }
 
 func repairMissingUUIDs(doc document) ([]Issue, error) {
@@ -174,7 +225,151 @@ func repairMissingUUIDs(doc document) ([]Issue, error) {
 	return fixed, nil
 }
 
+// repairStatuses only promotes valid reciprocal task pairs. Apply all edits to
+// each document together so several subtasks can be repaired in one pass.
+func repairStatuses(docs []document) ([]Issue, error) {
+	pairs, _ := linkedTaskPairs(docs)
+	byPath := make(map[string][]textEdit)
+	var fixed []Issue
+	for _, pair := range pairs {
+		parent, child := pair[0], pair[1]
+		parentStatus, parentOK := statusRank(parent.directive)
+		childStatus, childOK := statusRank(child.directive)
+		if !parentOK || !childOK || parentStatus == childStatus {
+			continue
+		}
+		lower, target := parent, childStatus
+		if childStatus < parentStatus {
+			lower, target = child, parentStatus
+		}
+		field, present := lower.directive.fields["status"]
+		line := lower.directive.line
+		edit := textEdit{start: lower.directive.insertAt, end: lower.directive.insertAt,
+			text: "status: " + statusNames[target] + lower.directive.lineEnding}
+		if present {
+			line = field.line
+			edit = textEdit{start: field.valueStart, end: field.valueEnd, text: statusNames[target]}
+		}
+		byPath[lower.path] = append(byPath[lower.path], edit)
+		fixed = append(fixed, Issue{lower.path, line, "status promoted to " + statusNames[target], true})
+	}
+	for _, doc := range docs {
+		if edits := byPath[doc.path]; len(edits) > 0 {
+			if err := applyEdits(doc, edits); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return fixed, nil
+}
+
+var statusNames = []string{"new", "refined", "done"}
+
+func statusRank(d directive) (int, bool) {
+	field, present := d.fields["status"]
+	if !present {
+		return 0, true
+	}
+	for rank, name := range statusNames {
+		if field.value == name {
+			return rank, true
+		}
+	}
+	return 0, false
+}
+
+type textEdit struct {
+	start, end int
+	text       string
+}
+
+func applyEdits(doc document, edits []textEdit) error {
+	sort.Slice(edits, func(i, j int) bool { return edits[i].start < edits[j].start })
+	var output bytes.Buffer
+	start := 0
+	for _, edit := range edits {
+		output.Write(doc.data[start:edit.start])
+		output.WriteString(edit.text)
+		start = edit.end
+	}
+	output.Write(doc.data[start:])
+	if err := os.WriteFile(doc.path, output.Bytes(), 0644); err != nil {
+		return fmt.Errorf("repair %s: %w", doc.path, err)
+	}
+	return nil
+}
+
+// linkedTaskPairs reports broken reciprocal links and returns pairs eligible
+// for status comparison. Parent list directives are the source of each pair.
+func linkedTaskPairs(docs []document) ([][2]taskDirective, []Issue) {
+	byPath := make(map[string]document, len(docs))
+	for _, doc := range docs {
+		byPath[doc.path] = doc
+	}
+	var pairs [][2]taskDirective
+	var issues []Issue
+	for _, doc := range docs {
+		for _, d := range doc.directives {
+			if !d.parseable || d.fields["type"].value != "task" {
+				continue
+			}
+			// This
+			if source, ok := d.fields["source"]; ok && source.value != "" {
+				target := referencePath(doc.path, source.value)
+				child, exists := byPath[target]
+				if !exists {
+					continue // A subtask file need not exist yet.
+				}
+				matches := matchingTaskDirectives(child, "parent", doc.path)
+				if len(matches) != 1 || len(matchingTaskDirectives(doc, "source", child.path)) != 1 {
+					issues = append(issues, Issue{doc.path, source.line,
+						fmt.Sprintf("source %s does not have exactly one reciprocal task parent", source.value), false})
+					continue
+				}
+				pairs = append(pairs, [2]taskDirective{{doc.path, d}, {child.path, matches[0]}})
+			}
+			if parent, ok := d.fields["parent"]; ok && parent.value != "" {
+				target := referencePath(doc.path, parent.value)
+				owner, exists := byPath[target]
+				if !exists {
+					continue // Missing parent is reported by validateDirective.
+				}
+				if len(matchingTaskDirectives(owner, "source", doc.path)) != 1 {
+					issues = append(issues, Issue{doc.path, parent.line,
+						fmt.Sprintf("parent %s does not have exactly one reciprocal task source", parent.value), false})
+				}
+			}
+		}
+	}
+	return pairs, issues
+}
+
+type taskDirective struct {
+	path      string
+	directive directive
+}
+
+func matchingTaskDirectives(doc document, key, target string) []directive {
+	var matches []directive
+	for _, d := range doc.directives {
+		field, ok := d.fields[key]
+		if d.parseable && d.fields["type"].value == "task" && ok && field.value != "" && referencePath(doc.path, field.value) == target {
+			matches = append(matches, d)
+		}
+	}
+	return matches
+}
+
 func validateDocuments(docs []document) ([]Issue, error) {
+	fields, err := validateFields(docs)
+	if err != nil {
+		return nil, err
+	}
+	return append(fields, validateLinks(docs)...), nil
+}
+
+// validateFields checks directive metadata and UUID uniqueness across loaded files.
+func validateFields(docs []document) ([]Issue, error) {
 	var issues []Issue
 	seen := make(map[string]Issue)
 	for _, doc := range docs {
@@ -196,6 +391,26 @@ func validateDocuments(docs []document) ([]Issue, error) {
 		}
 	}
 	return issues, nil
+}
+
+// validateLinks checks reciprocal task references and linked status agreement.
+func validateLinks(docs []document) []Issue {
+	pairs, issues := linkedTaskPairs(docs)
+	for _, pair := range pairs {
+		parent, child := pair[0], pair[1]
+		parentRank, parentOK := statusRank(parent.directive)
+		childRank, childOK := statusRank(child.directive)
+		if parentOK && childOK && parentRank != childRank {
+			field, present := parent.directive.fields["status"]
+			line := parent.directive.line
+			if present {
+				line = field.line
+			}
+			issues = append(issues, Issue{parent.path, line,
+				fmt.Sprintf("status mismatch with %s: %s vs %s", child.path, statusNames[parentRank], statusNames[childRank]), false})
+		}
+	}
+	return issues
 }
 
 func validateDirective(path string, directive directive) ([]Issue, error) {
@@ -227,13 +442,17 @@ func validateDirective(path string, directive directive) ([]Issue, error) {
 				if !uuidV4.MatchString(field.value) {
 					message = "invalid UUIDv4: " + field.value
 				}
-			case "parent":
-				target := filepath.Join(filepath.Dir(path), field.value)
+			case "parent", "source":
+				target := referencePath(path, field.value)
 				info, err := os.Stat(target)
-				if os.IsNotExist(err) || err == nil && !info.Mode().IsRegular() {
-					message = "parent is not an existing file: " + field.value
+				if os.IsNotExist(err) {
+					if key == "parent" {
+						message = "parent is not an existing file: " + field.value
+					}
 				} else if err != nil {
-					return nil, fmt.Errorf("inspect parent %s: %w", target, err)
+					return nil, fmt.Errorf("inspect %s %s: %w", key, target, err)
+				} else if !info.Mode().IsRegular() {
+					message = key + " is not an existing file: " + field.value
 				}
 			}
 		}

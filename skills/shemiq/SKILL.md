@@ -27,8 +27,8 @@ Some usage scenarios involve using the `shemiq` command. If the command is not p
 
 ## Metadata and validation
 
-- Every `:::shemiq` directive without `source:` needs its **own** canonical lowercase UUIDv4 in `uuid:`, even if it contains only `status:`. A directive with `source:` must **not** have `uuid:`; its identity comes from the referenced task. Accepted statuses are `new`, `progress`, and `done`.
-- When writing or editing directives by hand, do **not** generate or copy UUIDs yourself. Leave `uuid:` absent on new source-less directives, then run `shemiq validate --fix <file>` **separately for each touched Markdown file** needing repair. `--fix` only inserts missing UUIDs; resolve any remaining validation errors manually and recheck with `shemiq validate <file>`.
+- Every `:::shemiq` directive without `source:` needs its **own** canonical lowercase UUIDv4 in `uuid:`, even if it contains only `status:`. A directive with `source:` must **not** have `uuid:`; its identity comes from the referenced task. Accepted statuses are `new`, `refined`, and `done`; an omitted status means `new`.
+- When writing or editing directives by hand, do **not** generate or copy UUIDs yourself. Leave `uuid:` absent on new source-less directives, then run `shemiq validate --fix <file>` to insert missing UUIDs. Validation follows existing local `source:` and `parent:` references, checks reciprocal task links and their statuses, and reports broken links (a not-yet-created `source:` target is allowed). `--fix` also promotes the less advanced side of a linked status mismatch (`new < refined < done`); it may change linked files outside the selected path. It never fixes broken links or invalid statuses. Resolve any remaining errors manually and recheck with `shemiq validate <file>`.
 - `shemiq validate [path] [--fix]` checks metadata in a Markdown file or recursively in a directory. Without a path it scans the nearest existing `.shemiq/` directory. A failed check reports errors and exits nonzero.
 
 ## Common structure
@@ -129,5 +129,5 @@ that should be possible to do in one session.
 Even a status-only directive needs a UUID. This is a pre-repair example; run `validate --fix <file>` after writing it:
 
     :::shemiq
-    status: [new|progress|done]
+    status: [new|refined|done]
     :::

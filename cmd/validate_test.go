@@ -92,7 +92,7 @@ func TestValidateSuccessfulFixAndSourceException(t *testing.T) {
 		type: task
 		:::
 		:::shemiq
-		status: progress
+		status: refined
 		:::
 		:::shemiq
 		source: ./future.md
@@ -114,6 +114,156 @@ func TestValidateSuccessfulFixAndSourceException(t *testing.T) {
 	after, err := os.ReadFile(path)
 	if err != nil || string(after) != string(content) {
 		t.Fatalf("repeat fix changed file: %q, %v", after, err)
+	}
+}
+
+func TestValidateLinkedStatusLifecycle(t *testing.T) {
+	dir := t.TempDir()
+	parent := writeTestMarkdown(t, filepath.Join(dir, "top-level.md"), fmt.Sprintf(utils.Dedent(`
+		# Parent
+		:::shemiq
+		type: top-level
+		uuid: %s
+		:::
+		## Tasks
+		### First
+		:::shemiq
+		type: task
+		source: ./first.md
+		status: new
+		:::
+		### Future
+		:::shemiq
+		type: task
+		source: ./future.md
+		:::
+		`), testUUID))
+	child := writeTestMarkdown(t, filepath.Join(dir, "first.md"), utils.Dedent(`
+		# First
+		:::shemiq
+		type: task
+		parent: ./top-level.md
+		status: refined
+		:::
+		Some content to preserve.
+		`))
+	t.Chdir(dir)
+	for _, path := range []string{parent, child} {
+		_, diag, err := runCommand("", "validate", path)
+		if err == nil || strings.Count(diag, "status mismatch") != 1 || !strings.Contains(diag, parent) || strings.Contains(diag, "future.md") {
+			t.Fatalf("validate %s: diag=%q err=%v", path, diag, err)
+		}
+	}
+	_, diag, err := runCommand("", "validate", "--fix", child)
+	if err != nil || !strings.Contains(diag, parent+":11: fixed: status promoted to refined") {
+		t.Fatalf("fix from child: diag=%q err=%v", diag, err)
+	}
+	fixedParent, err := os.ReadFile(parent)
+	if err != nil || !strings.Contains(string(fixedParent), "source: ./first.md\nstatus: refined\n") {
+		t.Fatalf("parent not promoted: %q, %v", fixedParent, err)
+	}
+	// Promote an omitted child status to done while retaining unrelated bytes.
+	if err := os.WriteFile(child, []byte(strings.ReplaceAll(utils.Dedent(`
+		# First
+		:::shemiq
+		type: task
+		parent: ./top-level.md
+		:::
+		Some content to preserve.
+		`), "\n", "\r\n")), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parent, []byte(strings.Replace(string(fixedParent), "status: refined", "status: done", 1)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, diag, err = runCommand("", "validate", "--fix", parent)
+	if err != nil || !strings.Contains(diag, child+":2: fixed: status promoted to done") {
+		t.Fatalf("fix omitted child status: diag=%q err=%v", diag, err)
+	}
+	fixedChild, err := os.ReadFile(child)
+	if err != nil || !strings.Contains(string(fixedChild), "parent: ./top-level.md\r\nuuid: ") || !strings.Contains(string(fixedChild), "\r\nstatus: done\r\n:::\r\nSome content to preserve.") {
+		t.Fatalf("child not promoted or content changed: %q, %v", fixedChild, err)
+	}
+	_, diag, err = runCommand("", "validate", "--fix", child)
+	if err != nil || diag != "" {
+		t.Fatalf("second fix: diag=%q err=%v", diag, err)
+	}
+}
+
+func TestValidateExistingSourceWithoutBacklink(t *testing.T) {
+	dir := t.TempDir()
+	parent := writeTestMarkdown(t, filepath.Join(dir, "top-level.md"), fmt.Sprintf(utils.Dedent(`
+		:::shemiq
+		type: top-level
+		uuid: %s
+		:::
+		:::shemiq
+		type: task
+		source: ./child.md
+		:::
+		`), testUUID))
+	writeTestMarkdown(t, filepath.Join(dir, "child.md"), utils.Dedent(`
+		:::shemiq
+		type: task
+		uuid: 87654321-4321-4321-8321-abcdefabcdef
+		:::
+		`))
+	t.Chdir(dir)
+	_, diag, err := runCommand("", "validate", parent)
+	if err == nil || !strings.Contains(diag, "source ./child.md does not have exactly one reciprocal task parent") {
+		t.Fatalf("missing backlink: diag=%q err=%v", diag, err)
+	}
+}
+
+func TestValidateOneSidedAndInvalidStatuses(t *testing.T) {
+	dir := t.TempDir()
+	parent := writeTestMarkdown(t, filepath.Join(dir, "top-level.md"), fmt.Sprintf(utils.Dedent(`
+		:::shemiq
+		type: top-level
+		uuid: %s
+		:::
+		:::shemiq
+		type: task
+		source: ./child.md
+		status: progress
+		:::
+		`), testUUID))
+	writeTestMarkdown(t, filepath.Join(dir, "child.md"), utils.Dedent(`
+		:::shemiq
+		type: task
+		parent: ./other.md
+		status: done
+		:::
+		`))
+	writeTestMarkdown(t, filepath.Join(dir, "other.md"), fmt.Sprintf(utils.Dedent(`
+		:::shemiq
+		type: top-level
+		uuid: %s
+		:::
+		`), "87654321-4321-4321-8321-abcdefabcdef"))
+	t.Chdir(dir)
+	_, diag, err := runCommand("", "validate", "--fix", parent)
+	if err == nil || !strings.Contains(diag, "invalid status: progress") || !strings.Contains(diag, "does not have exactly one reciprocal task") || strings.Contains(diag, "status mismatch") || strings.Contains(diag, "fixed: status") {
+		t.Fatalf("one-sided: diag=%q err=%v", diag, err)
+	}
+	content, err := os.ReadFile(parent)
+	if err != nil || !strings.Contains(string(content), "status: progress") {
+		t.Fatalf("invalid status changed: %q, %v", content, err)
+	}
+	// Even when links become reciprocal, an invalid status cannot choose a winner.
+	child := filepath.Join(dir, "child.md")
+	if err := os.WriteFile(child, []byte(utils.Dedent(`
+		:::shemiq
+		type: task
+		parent: ./top-level.md
+		status: done
+		:::
+		`)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, diag, err = runCommand("", "validate", "--fix", child)
+	if err == nil || !strings.Contains(diag, "invalid status: progress") || strings.Contains(diag, "status mismatch") || strings.Contains(diag, "fixed: status") {
+		t.Fatalf("invalid reciprocal status: diag=%q err=%v", diag, err)
 	}
 }
 

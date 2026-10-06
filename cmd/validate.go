@@ -48,6 +48,6 @@ func newValidateCommand() *cobra.Command {
 			return nil
 		},
 	}
-	command.Flags().BoolVar(&fix, "fix", false, "Insert missing UUIDs into parseable directives")
+	command.Flags().BoolVar(&fix, "fix", false, "Insert missing UUIDs and promote mismatched statuses in linked tasks")
 	return command
 }
