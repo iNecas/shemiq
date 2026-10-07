@@ -54,6 +54,12 @@ type Task struct {
 	parentRef string           // resolved parent path, empty if unusable
 }
 
+// ParentPath returns the resolved parent reference path,
+// or empty if no usable parent was parsed.
+func (t *Task) ParentPath() string {
+	return t.parentRef
+}
+
 func sectionTask(
 	doc *parsedDocument,
 	section *parsedSection,

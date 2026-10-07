@@ -69,6 +69,9 @@ subtask-file paths.
 - The command/routing design and architecture/error/testing design were
   approved. Keep the implementation as one subtask rather than splitting the
   launcher and CLI work.
+- Subtask refinement confirmed that missing sources need no special preflight
+  validation or dedicated test scenario. Use normal store loading only for
+  documents needed by the selected route.
 
 ## Design
 
@@ -94,8 +97,9 @@ subtask-file paths.
 - Route `new` entries to
   `/shemiq-implement-task-parent <parent-path> <title>`. Their separate source
   file need not exist; top-level selection does not require loading it.
-- Route `refined` entries to `/shemiq-implement-task <subtask-path>`. Require
-  an existing task document at the selected entry's source path.
+- Route `refined` entries to `/shemiq-implement-task <subtask-path>`. Load the
+  selected source as a task document through the existing store, preserving
+  normal loading errors without special missing-source validation.
 - Parent-list status is authoritative even when an existing child disagrees.
   Do not perform status reconciliation or full metadata validation. The CLI
   never implements a top-level document directly or changes task status
@@ -130,8 +134,8 @@ subtask-file paths.
 ### Errors and verification
 
 - Fail before launch for ineligible parents/subtasks, missing or ambiguous
-  titles, broken direct-file parent/source identification, missing refined
-  source documents, wrong task types, or cancelled selection.
+  titles, broken direct-file parent/source identification, wrong task types,
+  or cancelled selection. Do not preflight all referenced source files.
 - Preserve existing malformed-document handling and project-containment
   checks, while keeping unrelated semantic metadata issues outside this
   workflow. Selection and launch must not repair or edit task documents.
@@ -148,8 +152,11 @@ subtask-file paths.
 
 ## Current status
 
-High-level refinement is complete and the design is approved. Implementation
-has not started; one subtask covers the complete change.
+Implementation is complete. The `shemiq implement` command supports
+interactive discovery, explicit top-level paths, `--subtask` exact-title
+selection, and direct subtask-file paths. Subtask labels show statuses;
+routing uses the parent-list status to choose between the `new` and `refined`
+implementation flows. All tests pass (`make check`).
 
 ## Tasks
 
@@ -157,7 +164,7 @@ has not started; one subtask covers the complete change.
 :::shemiq
 type: task
 source: ./add-shemiq-implement-command.md
-status: new
+status: refined
 :::
 
 Implement the CLI, task selection and direct-file routing, launcher flows,

@@ -40,8 +40,10 @@ func TestPiRequiresTerminalStreams(t *testing.T) {
 				return fd == int(tc.peer.Fd()) || term.IsTerminal(fd)
 			}}
 			err := pi.Launch(Request{}, tc.streams)
-			if err == nil || !strings.Contains(err.Error(), "requires terminal stdin and stdout") {
-				t.Fatalf("err=%v; expected terminal rejection before executable lookup", err)
+			if err == nil || !strings.Contains(
+				err.Error(),
+				"requires terminal stdin and stdout") {
+				t.Fatalf("err=%v; expected terminal rejection", err)
 			}
 		})
 	}
@@ -83,6 +85,41 @@ func TestPiMessageQuoting(t *testing.T) {
 	message, err = piMessage(request)
 	if err != nil || message != "/shemiq-refine-and-split '"+filepath.Join(".shemiq", "tasks", "space task", "top-level.md")+"'" {
 		t.Fatalf("top-level message=%q err=%v", message, err)
+	}
+}
+
+func TestPiImplementFlowMessages(t *testing.T) {
+	root := t.TempDir()
+	subPath := filepath.Join(
+		root, ".shemiq", "tasks", "my-task", "sub.md")
+	parentPath := filepath.Join(
+		root, ".shemiq", "tasks", "my-task",
+		"top-level.md")
+
+	msg, err := piMessage(Request{
+		Flow: ImplementSubtask, ProjectRoot: root,
+		DocumentPath: subPath,
+	})
+	want := "/shemiq-implement-task '" +
+		filepath.Join(".shemiq", "tasks", "my-task", "sub.md") +
+		"'"
+	if err != nil || msg != want {
+		t.Fatalf("msg=%q err=%v; want %q", msg, err, want)
+	}
+
+	msg, err = piMessage(Request{
+		Flow:         ImplementSubtaskParent,
+		ProjectRoot:  root,
+		DocumentPath: parentPath,
+		SubtaskTitle: "My subtask",
+	})
+	want = "/shemiq-implement-task-parent '" +
+		filepath.Join(
+			".shemiq", "tasks", "my-task",
+			"top-level.md") +
+		"' 'My subtask'"
+	if err != nil || msg != want {
+		t.Fatalf("msg=%q err=%v; want %q", msg, err, want)
 	}
 }
 

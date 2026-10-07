@@ -109,6 +109,20 @@ Interactive `shemiq refine` variant lets you choose the sub-tasks from refined t
 /shemiq-implement-task .shemiq/tasks/$MY_TASK/$SUB_TASK.md
 ```
 
+Or use `shemiq implement` from a terminal. Without arguments it discovers
+refined top-level tasks and offers eligible subtasks (status `new` or `refined`)
+with status labels:
+
+```sh
+shemiq implement                                         # interactive
+shemiq implement .shemiq/tasks/$MY_TASK                  # pick from task
+shemiq implement .shemiq/tasks/$MY_TASK --subtask "name" # exact title
+shemiq implement .shemiq/tasks/$MY_TASK/$SUB_TASK.md     # direct file
+```
+
+Refined subtasks launch `/shemiq-implement-task`; new subtasks launch
+`/shemiq-implement-task-parent`.
+
 **3 b. Implement a sub-task immediately**
 
 If a sub-task is straight forward, all the important information has already been

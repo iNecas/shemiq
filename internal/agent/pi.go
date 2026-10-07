@@ -22,8 +22,11 @@ func (p Pi) Launch(request Request, streams Streams) error {
 	if probe == nil {
 		probe = term.IsTerminal
 	}
-	if !isTerminalFile(streams.Input, probe) || !isTerminalFile(streams.Output, probe) {
-		return fmt.Errorf("refinement requires terminal stdin and stdout; run shemiq refine without input/output redirection")
+	if !isTerminalFile(streams.Input, probe) ||
+		!isTerminalFile(streams.Output, probe) {
+		return fmt.Errorf(
+			"session requires terminal stdin and stdout; " +
+				"run without input/output redirection")
 	}
 	message, err := piMessage(request)
 	if err != nil {
@@ -48,30 +51,43 @@ func (p Pi) Launch(request Request, streams Streams) error {
 		return fmt.Errorf("start pi in %q: %w", request.ProjectRoot, err)
 	}
 	if err := child.Wait(); err != nil {
-		return fmt.Errorf("pi refinement session failed: %w", err)
+		return fmt.Errorf("pi session failed: %w", err)
 	}
 	return nil
 }
 
 func piMessage(request Request) (string, error) {
-	var template string
-	switch request.Flow {
-	case RefineTopLevel:
-		template = "shemiq-refine-and-split"
-	case RefineSubtask:
-		template = "shemiq-refine-sub-task"
-	default:
-		return "", fmt.Errorf("unsupported refinement flow: %q", request.Flow)
-	}
-	path, err := filepath.Rel(request.ProjectRoot, request.DocumentPath)
+	template, err := flowTemplate(request.Flow)
 	if err != nil {
-		return "", fmt.Errorf("make document path relative to project root: %w", err)
+		return "", err
+	}
+	path, err := filepath.Rel(
+		request.ProjectRoot, request.DocumentPath)
+	if err != nil {
+		return "", fmt.Errorf(
+			"make document path relative to project root: %w",
+			err)
 	}
 	message := "/" + template + " " + quotePiArgument(path)
-	if request.Flow == RefineSubtask {
+	if request.SubtaskTitle != "" {
 		message += " " + quotePiArgument(request.SubtaskTitle)
 	}
 	return message, nil
+}
+
+func flowTemplate(flow Flow) (string, error) {
+	switch flow {
+	case RefineTopLevel:
+		return "shemiq-refine-and-split", nil
+	case RefineSubtask:
+		return "shemiq-refine-sub-task", nil
+	case ImplementSubtask:
+		return "shemiq-implement-task", nil
+	case ImplementSubtaskParent:
+		return "shemiq-implement-task-parent", nil
+	default:
+		return "", fmt.Errorf("unsupported flow: %q", flow)
+	}
 }
 
 func isTerminalFile(stream any, probe func(int) bool) bool {
