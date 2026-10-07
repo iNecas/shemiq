@@ -1,6 +1,6 @@
 # Shemiq
 
-Opinionated setup for LLM-accelerated development that keeps the developer involved.
+Opinionated setup for LLM-accelerated development that keeps the developer in the loop.
 
 ## Motivation
 
@@ -11,11 +11,10 @@ learn about the problem at hand and steer as the understanding improves.  The
 assumption is: the developer knows all the answers at the beginning, the agents
 execute on that and everyone is happy. In reality, only the tokens provider is.
 
-The sufficiently detailed specification of the application is the code. Developing
-the specification is the main task.
+The sufficiently detailed specification of the application is the code.
 
-Instead, shemiq focus on building the changes, not trying to compose a markdown
-source of truth, indistinguishable from any other slop.
+Instead, shemiq focuses on building the changes, not trying to compose a markdown
+source of truth.
 
 ## Overview
 
@@ -42,9 +41,7 @@ This includes:
 - CLI
 - TUI (TBD)
 - Pi extension (TBD)
-- TUI (TBD)
-- Emacs integration (TBD)
-- Herder integration (TBD)
+- Other integrations
 
 ## Installation
 
@@ -141,3 +138,11 @@ This should still produce the separate sub-task file at the end of the implement
   * I like the concepts, but the changes I needed were big enough to start from scratch.
     Also, while appreciating Lisp and Clojure, it's not my primary language and I find
     go-lang a better fit for me.
+* [OpenSpec](https://github.com/Fission-AI/OpenSpec)
+  * shemiq `tasks` might be conceptually similar to `changes` in OpenSpec. However,
+    I've not (yet) evolved to appreciate the spec-driven development philosophy.
+
+## Name
+
+International variation on [Šemík](https://cs.wikipedia.org/wiki/%C5%A0em%C3%ADk), the Czech mythic horse
+capable of enormous jumps and appreciation of people.
