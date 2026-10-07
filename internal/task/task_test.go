@@ -44,21 +44,36 @@ func TestDirectiveFieldsMetadataOnly(t *testing.T) {
 	for _, status := range []string{"new", "invalid"} {
 		t.Run(status, func(t *testing.T) {
 			path := "metadata.md"
+			// Parse a valid document with a primary heading
+			// and test directiveFields on the directive.
 			doc, err := parseMarkdownDocument(path,
-				[]byte(":::shemiq\nstatus: "+status+"\n:::\n"))
+				[]byte("# Title\n:::shemiq\nstatus: "+
+					status+"\n:::\n"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			fields, issues := directiveFields(path, doc.root.directives[0])
+			directive := doc.root.children[0].
+				directives[0]
+			fields, issues := directiveFields(
+				path, directive)
 			if status == "invalid" {
-				if fields["status"].value != "" || len(issues) != 2 ||
-					issues[0].Message != "invalid status: invalid" ||
-					issues[1].Message != "missing uuid" {
-					t.Fatalf("metadata-only conversion: fields=%+v issues=%+v", fields, issues)
+				if fields["status"].value != "" ||
+					len(issues) != 2 ||
+					issues[0].Message !=
+						"invalid status: invalid" ||
+					issues[1].Message !=
+						"missing uuid" {
+					t.Fatalf(
+						"metadata-only: fields=%+v "+
+							"issues=%+v",
+						fields, issues)
 				}
-			} else if fields["status"].value != "new" || len(issues) != 1 ||
+			} else if fields["status"].value != "new" ||
+				len(issues) != 1 ||
 				issues[0].Message != "missing uuid" {
-				t.Fatalf("query structure leaked into general metadata findings: %+v", issues)
+				t.Fatalf(
+					"general metadata findings: %+v",
+					issues)
 			}
 		})
 	}

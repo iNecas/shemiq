@@ -51,7 +51,11 @@ type parsedField struct {
 
 // parseMarkdownDocument extracts structure only. It never reads files or
 // interprets metadata, and returns no document on the first syntax error.
-func parseMarkdownDocument(path string, data []byte) (*parsedDocument, error) {
+// Directives are permitted only immediately after the document's primary
+// heading or direct ### subtask headings under its ## Tasks section.
+func parseMarkdownDocument(
+	path string, data []byte,
+) (*parsedDocument, error) {
 	root := &parsedSection{span: sourceSpan{0, len(data), 1}}
 	doc := &parsedDocument{path: path, data: data, root: root}
 	sections := []*parsedSection{root}
@@ -74,7 +78,8 @@ func parseMarkdownDocument(path string, data []byte) (*parsedDocument, error) {
 				current.lineEnding = lineEnding(data, span.start)
 				current = nil
 			default:
-				field, err := parseMarkdownField(path, text, span)
+				field, err := parseMarkdownField(
+					path, text, span)
 				if err != nil {
 					return nil, err
 				}
@@ -98,9 +103,12 @@ func parseMarkdownDocument(path string, data []byte) (*parsedDocument, error) {
 			if text != ":::shemiq" {
 				return nil, fmt.Errorf("%s:%d: malformed shemiq directive opener", path, line)
 			}
-			current = &parsedDirective{span: span, opening: span}
+			current = &parsedDirective{
+				span: span, opening: span,
+			}
 			section := sections[len(sections)-1]
-			section.directives = append(section.directives, current)
+			section.directives = append(
+				section.directives, current)
 			continue
 		}
 		if level, title, ok := markdownHeading(text); ok {
@@ -113,14 +121,65 @@ func parseMarkdownDocument(path string, data []byte) (*parsedDocument, error) {
 				span: sourceSpan{span.start, len(data), line},
 			}
 			parent := sections[len(sections)-1]
-			parent.children = append(parent.children, section)
+			parent.children = append(
+				parent.children, section)
 			sections = append(sections, section)
 		}
 	}
 	if current != nil {
-		return nil, fmt.Errorf("%s:%d: unterminated shemiq directive", path, current.opening.line)
+		return nil, fmt.Errorf(
+			"%s:%d: unterminated shemiq directive",
+			path, current.opening.line)
+	}
+	if err := validateDirectivePlacement(doc); err != nil {
+		return nil, err
 	}
 	return doc, nil
+}
+
+// validateDirectivePlacement enforces that every directive
+// immediately follows (only blank lines between) either the
+// document's primary # heading or a direct ### child of its
+// ## Tasks section. At most one directive per heading.
+func validateDirectivePlacement(
+	doc *parsedDocument,
+) error {
+	allowed := make(map[*parsedDirective]bool)
+	var primary *parsedSection
+	for _, child := range doc.root.children {
+		if child.level == 1 {
+			primary = child
+			break
+		}
+	}
+	if primary != nil {
+		if d := adjacentDirective(doc, primary); d != nil {
+			allowed[d] = true
+		}
+		for _, child := range primary.children {
+			if child.level == 2 && child.title == "Tasks" {
+				for _, entry := range child.children {
+					if entry.level != 3 {
+						continue
+					}
+					if d := adjacentDirective(
+						doc, entry,
+					); d != nil {
+						allowed[d] = true
+					}
+				}
+				break
+			}
+		}
+	}
+	for _, d := range allDirectives(doc.root) {
+		if !allowed[d] {
+			return fmt.Errorf(
+				"%s:%d: unsupported directive position",
+				doc.path, d.opening.line)
+		}
+	}
+	return nil
 }
 
 func adjacentDirective(doc *parsedDocument, section *parsedSection) *parsedDirective {

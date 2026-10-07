@@ -72,6 +72,18 @@ Agreed decisions:
 
 ## Design
 
+### Follow-up revision: task-backed validation
+
+The approved [validation follow-up](./further-refactoring-of-validation-logic.md)
+supersedes the baseline decisions below where they conflict: store existing
+file tasks rather than a document registry, load the whole configured scope
+once before queries, and validate tasks with their embedded subtasks. Child
+file tasks and parent-list entries remain distinct. Directives outside the
+primary heading or direct `###` entries under `## Tasks`, or without immediate
+heading adjacency, now cause parsing errors. Directive-less subtask headings
+are valid `new` tasks; they require neither UUIDs nor repair-created directives.
+Repairs refresh affected tasks; external changes require a new store.
+
 ### Ownership and organization
 
 Keep the implementation in the existing `internal/task` package:
@@ -191,6 +203,28 @@ with `metadataKeyPattern`/`lineEnding` moved into `parse.go`. A malformed field
 is now a fatal syntax error rather than a finding. `go test ./...`, `go vet
 ./...`, and `git diff --check` pass.
 
+Further validation refactoring is now `done`. `Store.documents` has been
+replaced with `Store.tasks`, which caches document-level tasks with embedded
+subtasks. Idempotent `Store.load()` eagerly loads the complete configured scope
+before any query; a syntax error in any scoped file blocks queries. The parser
+enforces directive placement: directives are only permitted immediately after
+the primary `#` heading or direct `###` subtask headings under `## Tasks`.
+Headingless, ordinary-section, and non-adjacent directives are now fatal parse
+errors. Directive-less `###` subtask headings produce valid `new` task entries
+without issues or repair-generated directives. Validation uses `directiveFields`
+on task directives rather than `t.Issues`, separating structural query findings
+from metadata validation findings. `directiveRecord`, `collectRecords`, and
+`loadParsedDocument` have been retired. All existing tests updated with
+supported-position fixtures and new placement error coverage. `go test ./...`,
+`go vet ./...`, and `git diff --check` pass.
+
+Review follow-up extracted UUID uniqueness checking and simplified
+`TopLevelTasks` to filter cached scoped tasks by `top-level` type in path order.
+Listing no longer rescans files or relies on conventional filenames, including
+in default scope; empty directories do not cause missing-file listing errors.
+Explicit directory lookups still require `top-level.md`. Tests cover cached
+candidate stability after external changes and updated refinement selection.
+
 Creation/archive remains `new` for a separate refinement. Existing creation code
 still lives unchanged in `create.go`; its public API and archive behavior are
 not yet migrated.
@@ -236,6 +270,29 @@ parsed document. Traverse all directives in that document and collect local
 findings with `directiveFields`; no metadata cache or interpreted-record type
 remains. Refresh replaces parsed snapshots. Keep query-structure issues out of
 validation, which must support metadata-only documents without task headings.
+
+### Further refactoring of validation logic
+:::shemiq
+type: task
+source: ./further-refactoring-of-validation-logic.md
+status: done
+:::
+
+`internal/task/validate.go` is still more complicated than it needs to be.
+Simplify the flow around:
+
+1. `Store.tasks` containing existing file tasks with embedded subtasks.
+2. Idempotent `Store.load` loading the complete scope before queries, without
+   cross-task validation.
+3. Removal of `s.documents` in favor of the task-backed cache.
+4. Additional path/UUID indexes only where they simplify the implementation.
+5. `Store.Validate` working mostly on tasks, not documents.
+
+Refinement note: unsupported or non-adjacent directive placement is a parsing
+error. Direct subtask headings without directives produce valid `new` records.
+Existing semantic tests remain regression coverage, but headingless fixtures
+need supported headings and adjusted diagnostic lines. See the linked task
+for approved loading, cache, validation, and repair behavior.
 
 ### Consolidate creation and archive boundaries
 :::shemiq

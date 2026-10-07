@@ -38,7 +38,7 @@ func TestRefineLaunchAndSelection(t *testing.T) {
 	refined := refineFixture(t, root, "tasks", "second", "Second", "status: refined\n", subtasks)
 	t.Chdir(root)
 	title := `A "quoted" title`
-	taskPrompt := "Select a task:\n1. First\n2. Second\nSelection: "
+	taskPrompt := "Select a task:\n1. First\n2. First\n3. Second\nSelection: "
 	subtaskPrompt := "Select a subtask:\n1. " + title + "\nSelection: "
 	for _, tc := range []struct {
 		name, input, path, title string
@@ -48,9 +48,9 @@ func TestRefineLaunchAndSelection(t *testing.T) {
 		{"explicit top-level", "", otherName, "", []string{"refine", otherName}, ""},
 		{"exact title", "", refined, title,
 			[]string{"refine", refined, "--subtask", title}, ""},
-		{"interactive selection", "2\n1\n", refined, title,
+		{"interactive selection", "3\n1\n", refined, title,
 			[]string{"refine"}, taskPrompt + subtaskPrompt},
-		{"pick task then exact subtask", "2\n", refined, title,
+		{"pick task then exact subtask", "3\n", refined, title,
 			[]string{"refine", "--subtask", title}, taskPrompt},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

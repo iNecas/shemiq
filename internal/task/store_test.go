@@ -3,7 +3,6 @@ package task
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/iNecas/shemiq/internal/utils"
@@ -12,96 +11,129 @@ import (
 func TestStoreScopeAndSnapshots(t *testing.T) {
 	root := t.TempDir()
 	store, err := NewStore(root, "")
-	if err != nil || store.scope != nil || len(store.documents) != 0 {
-		t.Fatalf("construction must be lazy: store=%+v err=%v", store, err)
+	if err != nil || store.scope != nil ||
+		len(store.tasks) != 0 {
+		t.Fatalf(
+			"construction must be lazy: store=%+v err=%v",
+			store, err)
 	}
 	if _, err := store.TopLevelTasks(); err == nil {
 		t.Fatal("read without a project succeeded")
 	}
-	if _, err := os.Stat(filepath.Join(root, ".shemiq")); !os.IsNotExist(err) {
+	if _, err := os.Stat(
+		filepath.Join(root, ".shemiq"),
+	); !os.IsNotExist(err) {
 		t.Fatal("read created a project")
 	}
 	active := filepath.Join(root, ".shemiq", "tasks")
-	a := storeFixture(t, active, "a/top-level.md", utils.Dedent(`
+	a := storeFixture(t, active, "a/top-level.md",
+		utils.Dedent(`
 		# A
 		:::shemiq
 		type: task
 		:::
 		`))
-	b := storeFixture(t, active, "b/top-level.md", utils.Dedent(`
+	b := storeFixture(t, active, "b/top-level.md",
+		utils.Dedent(`
 		# B
 		:::shemiq
 		type: top-level
 		status: done
 		:::
 		`))
-	archived := storeFixture(t, root, ".shemiq/archive/old/top-level.md", utils.Dedent(`
+	archived := storeFixture(t, root,
+		".shemiq/archive/old/top-level.md",
+		utils.Dedent(`
 		# Archived
 		:::shemiq
 		type: top-level
 		:::
 		`))
 	tasks, err := store.TopLevelTasks()
-	if err != nil || len(tasks) != 2 || tasks[0].Path != a || tasks[1].Path != b {
-		t.Fatalf("default candidates: tasks=%+v err=%v", tasks, err)
+	if err != nil || len(tasks) != 1 || tasks[0].Path != b {
+		t.Fatalf("default candidates: tasks=%+v err=%v",
+			tasks, err)
 	}
-	// A later validation operation may load an out-of-scope reference. It must
-	// not widen public queries just because the document is now cached.
-	if _, err := store.loadDocument(archived, false); err != nil {
+	aTask, err := store.TaskByPath(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Load out-of-scope reference; it must not widen queries.
+	if _, err := store.loadTask(
+		archived, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.TaskByPath(archived); err == nil {
 		t.Fatal("cached archive escaped default query scope")
 	}
+	// Alias and snapshot caching
+	alias := filepath.Join(active, "b", "alias.md")
+	if err := os.Symlink(b, alias); err != nil {
+		t.Fatal(err)
+	}
+	cached, err := store.TaskByPath(alias)
+	if err != nil || cached.Title != "B" ||
+		cached.Status != "done" || cached.Path != b ||
+		cached.document != tasks[0].document {
+		t.Fatalf("alias did not reuse snapshot: task=%+v err=%v",
+			cached, err)
+	}
+	// Write bad content to test failed refresh
 	if err := os.WriteFile(b, []byte(utils.Dedent(`
+		# Bad
 		:::shemiq
 		malformed
 		`)), 0644); err != nil {
 		t.Fatal(err)
 	}
-	alias := filepath.Join(active, "alias.md")
-	if err := os.Symlink(b, alias); err != nil {
-		t.Fatal(err)
-	}
-	cached, err := store.TaskByPath(alias)
-	if err != nil || cached.Title != "B" || cached.Status != "done" || cached.Path != b ||
-		cached.document != tasks[1].document {
-		t.Fatalf("alias did not reuse snapshot: task=%+v err=%v", cached, err)
-	}
-	if _, err := store.loadDocument(b, true); err == nil {
+	if _, err := store.loadTask(
+		b, true); err == nil {
 		t.Fatal("private refresh did not see syntax error")
 	}
-	if store.documents[b] != cached.document {
+	if store.tasks[b] == nil ||
+		store.tasks[b].document != cached.document {
 		t.Fatal("failed refresh replaced the cached snapshot")
 	}
-	storeFixture(t, active, "b/top-level.md", utils.Dedent(`
-		:::shemiq
-		status: new
-		:::
+	// Successful refresh
+	storeFixture(t, active, "b/top-level.md",
+		utils.Dedent(`
 		# Updated
 		:::shemiq
 		type: top-level
 		status: refined
 		:::
 		`))
-	refreshed, err := store.loadDocument(b, true)
+	refreshed, err := store.loadTask(b, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	updated, err := store.TaskByPath(alias)
-	if err != nil || refreshed.Title != "Updated" || updated.Status != "refined" ||
-		updated.document != refreshed.document || updated.document == cached.document {
-		t.Fatalf("refresh did not replace task's document: task=%+v err=%v", updated, err)
+	if err != nil || refreshed.Title != "Updated" ||
+		updated.Status != "refined" ||
+		updated.document != refreshed.document ||
+		updated.document == cached.document {
+		t.Fatalf(
+			"refresh did not replace task: task=%+v err=%v",
+			updated, err)
 	}
-	if len(store.documents) != 3 || store.documents[a] != tasks[0].document {
-		t.Fatal("refresh lost other documents' snapshots")
+	if len(store.tasks) != 3 ||
+		store.tasks[a].document != aTask.document {
+		t.Fatal("refresh lost other tasks' snapshots")
 	}
-	if err := os.Mkdir(filepath.Join(active, "missing"), 0755); err != nil {
+	// External additions/deletions must not change cached candidates.
+	storeFixture(t, active, "missing/other.md", utils.Dedent(`
+		# Added
+		:::shemiq
+		type: top-level
+		:::
+		`))
+	if err := os.Remove(b); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.TopLevelTasks(); err == nil ||
-		!strings.Contains(err.Error(), "missing/top-level.md") {
-		t.Fatalf("missing conventional document: %v", err)
+	tasks, err = store.TopLevelTasks()
+	if err != nil || len(tasks) != 1 ||
+		tasks[0].Path != b || tasks[0].Title != "Updated" {
+		t.Fatalf("cached candidates: tasks=%+v err=%v", tasks, err)
 	}
 }
 
@@ -175,11 +207,18 @@ func TestStoreExplicitScopes(t *testing.T) {
 
 func TestStoreEntryAndChildAreDistinct(t *testing.T) {
 	root, other := t.TempDir(), t.TempDir()
-	child := storeFixture(t, other, ".shemiq/archive/child.md", utils.Dedent(`
+	child := storeFixture(t, other,
+		".shemiq/archive/child.md",
+		utils.Dedent(`
+		# Child title
 		:::shemiq
-		malformed
+		type: task
+		status: done
+		:::
 		`))
-	parent := storeFixture(t, root, ".shemiq/tasks/example/top-level.md", utils.Dedent(`
+	parent := storeFixture(t, root,
+		".shemiq/tasks/example/top-level.md",
+		utils.Dedent(`
 		# Parent
 
 		:::shemiq
@@ -204,7 +243,9 @@ func TestStoreEntryAndChildAreDistinct(t *testing.T) {
 		### Ordinary section
 		Just prose.
 		`))
-	if err := os.Symlink(child, filepath.Join(filepath.Dir(parent), "child.md")); err != nil {
+	if err := os.Symlink(child,
+		filepath.Join(filepath.Dir(parent),
+			"child.md")); err != nil {
 		t.Fatal(err)
 	}
 	store, err := NewStore(root, filepath.Dir(parent))
@@ -212,90 +253,115 @@ func TestStoreEntryAndChildAreDistinct(t *testing.T) {
 		t.Fatal(err)
 	}
 	top, err := store.TaskByPath(filepath.Dir(parent))
-	if err != nil || top.Status != "new" || top.Type != TypeTopLevel || len(top.Subtasks) != 2 {
-		t.Fatalf("parent query must not load children: task=%+v err=%v", top, err)
+	// 3 subtasks: Entry title, Not created, Ordinary section
+	// (directive-less subtask creates a valid new entry)
+	if err != nil || top.Status != "new" ||
+		top.Type != TypeTopLevel ||
+		len(top.Subtasks) != 3 {
+		t.Fatalf(
+			"parent query: task=%+v err=%v", top, err)
 	}
 	entry := top.Subtasks[0]
-	if top.document != store.documents[parent] || entry.document != top.document ||
+	if top.document != store.tasks[parent].document ||
+		entry.document != top.document ||
 		top.Subtasks[1].document != top.document {
-		t.Fatal("parent and entries must reference their defining document")
+		t.Fatal(
+			"parent and entries must reference " +
+				"their defining document")
 	}
-	if entry.Title != "Entry title" || entry.Status != "new" ||
-		entry.Path != child || entry.ProjectRoot != root {
-		t.Fatalf("unexpected entry representation: %+v", entry)
+	if entry.Title != "Entry title" ||
+		entry.Status != "new" ||
+		entry.Path != child ||
+		entry.ProjectRoot != root {
+		t.Fatalf("unexpected entry: %+v", entry)
 	}
-	if top.Subtasks[1].Path != filepath.Join(filepath.Dir(parent), "missing.md") {
-		t.Fatalf("uncreated target lost: %+v", top.Subtasks[1])
+	if top.Subtasks[1].Path !=
+		filepath.Join(filepath.Dir(parent), "missing.md") {
+		t.Fatalf("uncreated target lost: %+v",
+			top.Subtasks[1])
 	}
-	storeFixture(t, other, ".shemiq/archive/child.md", utils.Dedent(`
-		# Child title
-		:::shemiq
-		type: task
-		status: done
-		:::
-		`))
+	// Directive-less subtask: type task, status new, no path
+	ordinary := top.Subtasks[2]
+	if ordinary.Title != "Ordinary section" ||
+		ordinary.Type != TypeTask ||
+		ordinary.Status != "new" ||
+		ordinary.Path != "" ||
+		len(ordinary.Issues) != 0 {
+		t.Fatalf("directive-less subtask: %+v", ordinary)
+	}
 	childStore, err := NewStore(root, child)
 	if err != nil {
 		t.Fatal(err)
 	}
 	standalone, err := childStore.TaskByPath(child)
-	if err != nil || standalone.Title != "Child title" || standalone.Status != "done" ||
-		standalone.ProjectRoot != other || standalone.section == entry.section ||
-		standalone.document != childStore.documents[child] || standalone.document == entry.document {
-		t.Fatalf("unexpected child representation: task=%+v err=%v", standalone, err)
+	if err != nil ||
+		standalone.Title != "Child title" ||
+		standalone.Status != "done" ||
+		standalone.ProjectRoot != other ||
+		standalone.section == entry.section ||
+		standalone.document !=
+			childStore.tasks[child].document ||
+		standalone.document == entry.document {
+		t.Fatalf(
+			"unexpected child: task=%+v err=%v",
+			standalone, err)
 	}
 }
 
 func TestStorePrimaryStructure(t *testing.T) {
 	root := t.TempDir()
-	path := storeFixture(t, root, "structure.md", utils.Dedent(`
-		:::shemiq
-		status: invalid
-		:::
+	// Non-adjacent directive and later heading with directive:
+	// only primary heading's adjacent directive is accepted;
+	// non-adjacent and later # heading directives are now
+	// rejected by placement rules.
+	path := storeFixture(t, root, "structure.md",
+		utils.Dedent(`
 		# First
 		Prose prevents adjacency.
-		:::shemiq
-		type: top-level
-		:::
-		# Later valid definition
-		:::shemiq
-		type: top-level
-		:::
 		`))
 	store, err := NewStore(root, path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := store.TaskByPath(path)
-	if err != nil || got.Title != "First" || got.Status != "" ||
-		got.Type != "" || len(got.Issues) != 1 {
-		t.Fatalf("must not skip first primary heading: task=%+v err=%v", got, err)
+	if err != nil || got.Title != "First" ||
+		got.Status != "" || len(got.Issues) != 1 {
+		t.Fatalf(
+			"primary without directive: task=%+v err=%v",
+			got, err)
 	}
-	if got.document != store.documents[path] || len(got.document.root.directives) != 1 {
-		t.Fatal("task's document or metadata-only definition not retained")
+	if got.document != store.tasks[path].document {
+		t.Fatal("task's document not retained")
 	}
-	path = storeFixture(t, root, "metadata.md", utils.Dedent(`
-		:::shemiq
-		status: new
-		:::
+	// File without a heading: valid but no primary task
+	path = storeFixture(t, root, "noheading.md",
+		utils.Dedent(`
+		Just prose, no metadata.
 		`))
 	store, err = NewStore(root, path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err = store.TaskByPath(path)
-	if err != nil || got.Path != path || got.Status != "" || len(got.Issues) != 1 ||
-		got.document != store.documents[path] {
-		t.Fatalf("headingless query: task=%+v err=%v", got, err)
+	if err != nil || got.Path != path ||
+		len(got.Issues) != 1 ||
+		got.document != store.tasks[path].document {
+		t.Fatalf("headingless query: task=%+v err=%v",
+			got, err)
 	}
 }
 
-// Validation repairs refresh the store's snapshots so later task queries observe
-// the promoted status, while references it loaded stay outside query scope.
-func TestStoreValidateRefreshesWithoutExpandingScope(t *testing.T) {
+// Validation repairs refresh the store's snapshots so later
+// task queries observe promoted status, while references
+// loaded stay outside query scope.
+func TestStoreValidateRefreshesWithoutExpandingScope(
+	t *testing.T,
+) {
 	root := t.TempDir()
-	active := filepath.Join(root, ".shemiq", "tasks", "example")
-	parent := storeFixture(t, active, "top-level.md", utils.Dedent(`
+	active := filepath.Join(
+		root, ".shemiq", "tasks", "example")
+	storeFixture(t, active, "top-level.md",
+		utils.Dedent(`
 		# Parent
 		:::shemiq
 		type: top-level
@@ -309,7 +375,8 @@ func TestStoreValidateRefreshesWithoutExpandingScope(t *testing.T) {
 		status: done
 		:::
 		`))
-	child := storeFixture(t, active, "first.md", utils.Dedent(`
+	child := storeFixture(t, active, "first.md",
+		utils.Dedent(`
 		# First
 		:::shemiq
 		type: task
@@ -317,26 +384,31 @@ func TestStoreValidateRefreshesWithoutExpandingScope(t *testing.T) {
 		status: new
 		:::
 		`))
-	store, err := NewStore(root, filepath.Dir(parent))
+	store, err := NewStore(root, active)
 	if err != nil {
 		t.Fatal(err)
 	}
 	issues, err := store.Validate(true)
 	if err != nil {
-		t.Fatalf("validate: issues=%+v err=%v", issues, err)
+		t.Fatalf("validate: issues=%+v err=%v",
+			issues, err)
 	}
 	got, err := store.TaskByPath(child)
 	if err != nil || got.Status != "done" {
-		t.Fatalf("query did not see refreshed status: task=%+v err=%v", got, err)
+		t.Fatalf(
+			"query did not see refreshed status: "+
+				"task=%+v err=%v", got, err)
 	}
-	// The child was in scope; an out-of-scope reference remains unqueryable.
-	outer := storeFixture(t, root, "outside.md", utils.Dedent(`
+	// Out-of-scope reference remains unqueryable.
+	outer := storeFixture(t, root, "outside.md",
+		utils.Dedent(`
 		# Outside
 		:::shemiq
 		type: top-level
 		:::
 		`))
-	if _, err := store.loadDocument(outer, false); err != nil {
+	if _, err := store.loadTask(
+		outer, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.TaskByPath(outer); err == nil {

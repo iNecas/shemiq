@@ -46,45 +46,79 @@ type Task struct {
 	Subtasks    []Task
 	Issues      []Issue
 
-	document *parsedDocument
-	section  *parsedSection
+	document  *parsedDocument
+	section   *parsedSection
+	directive *parsedDirective // heading-adjacent directive, nil if absent
+	uuid      string           // interpreted UUID, empty if unusable
+	sourceRef string           // resolved source path, empty if unusable
+	parentRef string           // resolved parent path, empty if unusable
 }
 
-func sectionTask(doc *parsedDocument, section *parsedSection, parentList bool) Task {
+func sectionTask(
+	doc *parsedDocument,
+	section *parsedSection,
+	parentList bool,
+) Task {
 	result := Task{
-		Title: section.title, ProjectRoot: documentProjectRoot(doc.path),
-		document: doc, section: section,
+		Title:       section.title,
+		ProjectRoot: documentProjectRoot(doc.path),
+		document:    doc,
+		section:     section,
 	}
 	if section.title == "" {
 		result.Issues = append(result.Issues, Issue{
-			Path: doc.path, Line: section.heading.line, Message: "empty task title",
+			Path:    doc.path,
+			Line:    section.heading.line,
+			Message: "empty task title",
 		})
 	}
 	directive := adjacentDirective(doc, section)
 	if directive == nil {
-		result.Issues = append(result.Issues, Issue{
-			Path: doc.path, Line: section.heading.line,
-			Message: "missing heading-adjacent task directive",
-		})
+		// Directive-less subtask: valid with defaults.
+		// Primary headings without directives keep an issue.
+		if parentList {
+			result.Type = TypeTask
+			result.Status = "new"
+		} else {
+			result.Issues = append(result.Issues, Issue{
+				Path: doc.path,
+				Line: section.heading.line,
+				Message: "missing heading-adjacent " +
+					"task directive",
+			})
+		}
+		if !parentList {
+			result.Path = doc.path
+		}
 		return result
 	}
+	result.directive = directive
 	fields, issues := directiveFields(doc.path, directive)
 	result.Type = TaskType(fields["type"].value)
 	result.Status = fields["status"].value
 	if !hasParsedField(directive, "status") {
 		result.Status = "new"
 	}
+	result.uuid = fields["uuid"].value
+	if source, ok := fields["source"]; ok {
+		result.sourceRef = resolvedReferencePath(
+			doc.path, source.value)
+	}
+	if parent, ok := fields["parent"]; ok {
+		result.parentRef = resolvedReferencePath(
+			doc.path, parent.value)
+	}
 	result.Issues = append(result.Issues, issues...)
-	// Type is required for a task query, not for metadata-only validation.
+	// Type required for task query, not metadata-only.
 	if !hasParsedField(directive, "type") {
 		result.Issues = append(result.Issues, Issue{
-			Path: doc.path, Line: directive.opening.line, Message: "missing task type",
+			Path:    doc.path,
+			Line:    directive.opening.line,
+			Message: "missing task type",
 		})
 	}
 	if parentList {
-		if source, usable := fields["source"]; usable {
-			result.Path = resolvedReferencePath(doc.path, source.value)
-		}
+		result.Path = result.sourceRef
 	} else {
 		result.Path = doc.path
 	}

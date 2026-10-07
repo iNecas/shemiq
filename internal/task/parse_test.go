@@ -11,6 +11,7 @@ import (
 
 func TestParseMarkdownDocumentSections(t *testing.T) {
 	data := []byte(utils.Dedent(`
+		# **Main** ##
 		:::shemiq
 		status: typo
 		type: unknown
@@ -19,20 +20,12 @@ func TestParseMarkdownDocumentSections(t *testing.T) {
 		status: done
 		empty:
 		:::
-		# **Main** ##
-		prose
-
-		:::shemiq
-		type: top-level
-		:::
 		### Skipped
-		:::shemiq
-		:::
+		prose
 		#### Child
-		:::shemiq
-		status:
-		:::
-		## Sibling
+		prose
+		## Tasks
+		### Entry
 		:::shemiq
 		type: task
 		:::
@@ -43,37 +36,60 @@ func TestParseMarkdownDocumentSections(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := doc.root
-	if doc.path != "relative/../example.md" || string(doc.data) != string(data) ||
-		root.level != 0 || root.span != (sourceSpan{0, len(data), 1}) {
-		t.Fatalf("unexpected document/root: %+v, %+v", doc, root)
+	if doc.path != "relative/../example.md" ||
+		string(doc.data) != string(data) ||
+		root.level != 0 ||
+		root.span != (sourceSpan{0, len(data), 1}) {
+		t.Fatalf("unexpected document/root: %+v, %+v",
+			doc, root)
 	}
-	if len(root.directives) != 1 || len(root.children) != 2 {
+	if len(root.directives) != 0 ||
+		len(root.children) != 2 {
 		t.Fatalf("root ownership: %+v", root)
 	}
-	fields := root.directives[0].fields
-	wantFields := [][2]string{{"status", "typo"}, {"type", "unknown"}, {"uuid", "invalid"},
-		{"unknown-key_2", "keep: colons"}, {"status", "done"}, {"empty", ""}}
+	// Primary heading fields
+	main, last := root.children[0], root.children[1]
+	fields := main.directives[0].fields
+	wantFields := [][2]string{
+		{"status", "typo"}, {"type", "unknown"},
+		{"uuid", "invalid"},
+		{"unknown-key_2", "keep: colons"},
+		{"status", "done"}, {"empty", ""},
+	}
 	var gotFields [][2]string
 	for _, field := range fields {
-		gotFields = append(gotFields, [2]string{field.key, field.value})
+		gotFields = append(gotFields,
+			[2]string{field.key, field.value})
 	}
 	if !reflect.DeepEqual(gotFields, wantFields) {
-		t.Fatalf("field occurrences: got %v, want %v", gotFields, wantFields)
+		t.Fatalf("field occurrences: got %v, want %v",
+			gotFields, wantFields)
 	}
-	main, last := root.children[0], root.children[1]
-	if main.level != 1 || main.title != "**Main**" || len(main.children) != 2 ||
-		len(main.directives) != 1 || last.title != "Last" {
-		t.Fatalf("unexpected first-level sections: %+v, %+v", main, last)
+	if main.level != 1 ||
+		main.title != "**Main**" ||
+		len(main.children) != 2 ||
+		len(main.directives) != 1 ||
+		last.title != "Last" {
+		t.Fatalf(
+			"unexpected first-level sections: %+v, %+v",
+			main, last)
 	}
-	skipped, sibling := main.children[0], main.children[1]
-	if skipped.level != 3 || skipped.title != "Skipped" || len(skipped.children) != 1 ||
-		len(skipped.directives) != 1 || len(skipped.directives[0].fields) != 0 {
-		t.Fatalf("skipped-level/empty-directive structure: %+v", skipped)
+	skipped := main.children[0]
+	tasks := main.children[1]
+	if skipped.level != 3 ||
+		skipped.title != "Skipped" ||
+		len(skipped.children) != 1 ||
+		len(skipped.directives) != 0 {
+		t.Fatalf("skipped section: %+v", skipped)
 	}
 	child := skipped.children[0]
-	if child.level != 4 || child.title != "Child" || len(child.directives) != 1 ||
-		child.directives[0].fields[0].key != "status" || sibling.level != 2 || len(sibling.directives) != 1 {
-		t.Fatalf("nested directive ownership: %+v, %+v", child, sibling)
+	if child.level != 4 || child.title != "Child" {
+		t.Fatalf("nested section: %+v", child)
+	}
+	if tasks.level != 2 || tasks.title != "Tasks" ||
+		len(tasks.children) != 1 ||
+		len(tasks.children[0].directives) != 1 {
+		t.Fatalf("tasks section: %+v", tasks)
 	}
 	for _, check := range []struct {
 		section *parsedSection
@@ -81,21 +97,16 @@ func TestParseMarkdownDocumentSections(t *testing.T) {
 		end     int
 	}{
 		{main, "# **Main**", last.heading.start},
-		{skipped, "### Skipped", sibling.heading.start},
-		{child, "#### Child", sibling.heading.start},
-		{sibling, "## Sibling", last.heading.start},
 		{last, "# Last", len(data)},
 	} {
 		section := check.section
-		if section.span.start != strings.Index(string(data), check.start) ||
-			section.span.end != check.end || section.heading.start != section.span.start ||
+		if section.span.start !=
+			strings.Index(string(data), check.start) ||
+			section.span.end != check.end ||
+			section.heading.start != section.span.start ||
 			section.heading.line != section.span.line {
 			t.Errorf("section boundaries: %+v", section)
 		}
-	}
-	gap := string(data[main.heading.end:main.directives[0].opening.start])
-	if gap != "prose\n\n" {
-		t.Fatalf("heading/directive gap not retained: %q", gap)
 	}
 }
 
@@ -108,10 +119,7 @@ func TestParseMarkdownDocumentMarkdownSubset(t *testing.T) {
 		directives int
 	}{
 		{"empty", "", nil, nil, 0},
-		{"headingless metadata", utils.Dedent(`
-			:::shemiq
-			status: new
-			:::`), nil, nil, 1},
+		{"empty document", "", nil, nil, 0},
 		{"ATX headings", utils.Dedent(`
 			# Title ###` + " \t" + `
 			##` + "\t" + `*Literal* ##
@@ -137,6 +145,7 @@ func TestParseMarkdownDocumentMarkdownSubset(t *testing.T) {
 			:::shemiq
 			:::
 			`), []string{"Visible"}, []int{1}, 1},
+
 		{"tilde fence rules", "  " + utils.Dedent(`
 			~~~~ info `+"`allowed`"+`
 			# Hidden
@@ -263,6 +272,57 @@ func TestParseMarkdownDocumentSyntaxErrors(t *testing.T) {
 			:::
 			:::shemiq broken
 			`), 4, "malformed shemiq directive opener"},
+		{"headingless directive", utils.Dedent(`
+			:::shemiq
+			status: new
+			:::
+			`), 1, "unsupported directive position"},
+		{"directive under ordinary section", utils.Dedent(`
+			# Primary
+			:::shemiq
+			type: top-level
+			:::
+			## Context
+			:::shemiq
+			status: new
+			:::
+			`), 6, "unsupported directive position"},
+		{"directive after second # heading", utils.Dedent(`
+			# First
+			:::shemiq
+			type: top-level
+			:::
+			# Second
+			:::shemiq
+			type: top-level
+			:::
+			`), 6, "unsupported directive position"},
+		{"directive on ## Tasks heading", utils.Dedent(`
+			# Primary
+			:::shemiq
+			type: top-level
+			:::
+			## Tasks
+			:::shemiq
+			status: new
+			:::
+			`), 6, "unsupported directive position"},
+		{"two directives on primary", utils.Dedent(`
+			# Primary
+			:::shemiq
+			type: top-level
+			:::
+			:::shemiq
+			status: new
+			:::
+			`), 5, "unsupported directive position"},
+		{"non-adjacent primary directive", utils.Dedent(`
+			# Primary
+			Some prose
+			:::shemiq
+			type: top-level
+			:::
+			`), 3, "unsupported directive position"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			doc, err := parseMarkdownDocument("relative/../example.md", []byte(tc.data))
@@ -294,51 +354,124 @@ func TestParseMarkdownDocumentSourceEdits(t *testing.T) {
 		{"whitespace-only value", "\n", "\n", "\n", "\n", "", " \t", "done \t"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			before := "# Títle" + tc.headingEnding + "\tuntouched  " + tc.headingEnding + ":::shemiq" + tc.openingEnding
-			afterField := "unknown-key_2: keep: extra" + tc.lastEnding
+			// Directive immediately follows primary heading
+			// (blank line allowed, non-blank rejected).
+			before := "# Títle" + tc.headingEnding +
+				":::shemiq" + tc.openingEnding
+			afterField := "unknown-key_2: keep: extra" +
+				tc.lastEnding
 			tail := ":::" + tc.closingEnding
 			if tc.closingEnding != "" {
-				tail += "tail  \t"
+				tail += "\tuntouched  \t"
 			}
-			original := before + "status:" + tc.rawValue + tc.fieldEnding + afterField + tail
+			original := before + "status:" +
+				tc.rawValue + tc.fieldEnding +
+				afterField + tail
 			data := []byte(original)
-			doc, err := parseMarkdownDocument("example.md", data)
+			doc, err := parseMarkdownDocument(
+				"example.md", data)
 			if err != nil {
 				t.Fatal(err)
 			}
 			section := doc.root.children[0]
 			directive := section.directives[0]
 			field := directive.fields[0]
-			opening := sourceSpan{strings.Index(original, ":::shemiq"), len(before), 3}
-			closing := sourceSpan{len(original) - len(tail), len(original) - len(tail) + len(":::") + len(tc.closingEnding), 6}
-			if section.heading != (sourceSpan{0, len("# Títle") + len(tc.headingEnding), 1}) || directive.opening != opening || directive.closing != closing || directive.span != (sourceSpan{opening.start, closing.end, 3}) || directive.insertAt != closing.start || directive.lineEnding != tc.lastEnding {
-				t.Fatalf("incorrect heading/directive positions: %+v, %+v", section.heading, directive)
+			opening := sourceSpan{
+				strings.Index(original, ":::shemiq"),
+				len(before), 2}
+			closing := sourceSpan{
+				len(original) - len(tail),
+				len(original) - len(tail) +
+					len(":::") + len(tc.closingEnding), 5}
+			headingEnd := len("# Títle") +
+				len(tc.headingEnding)
+			if section.heading !=
+				(sourceSpan{0, headingEnd, 1}) ||
+				directive.opening != opening ||
+				directive.closing != closing ||
+				directive.span !=
+					(sourceSpan{
+						opening.start,
+						closing.end, 2}) ||
+				directive.insertAt != closing.start ||
+				directive.lineEnding != tc.lastEnding {
+				t.Fatalf(
+					"incorrect heading/directive "+
+						"positions: %+v, %+v",
+					section.heading, directive)
 			}
 			valueStart := len(before) + len("status:")
 			if field.value != "" {
-				valueStart += strings.Index(tc.rawValue, field.value)
+				valueStart += strings.Index(
+					tc.rawValue, field.value)
 			}
-			if field.span != (sourceSpan{len(before), len(before) + len("status:") + len(tc.rawValue) + len(tc.fieldEnding), 4}) || field.keySpan != (sourceSpan{len(before), len(before) + len("status"), 4}) || field.valueSpan != (sourceSpan{valueStart, valueStart + len(field.value), 4}) {
-				t.Fatalf("incorrect field positions: %+v", field)
+			fieldStart := len(before)
+			fieldEnd := fieldStart + len("status:") +
+				len(tc.rawValue) + len(tc.fieldEnding)
+			if field.span !=
+				(sourceSpan{fieldStart, fieldEnd, 3}) ||
+				field.keySpan !=
+					(sourceSpan{
+						fieldStart,
+						fieldStart + len("status"),
+						3}) ||
+				field.valueSpan !=
+					(sourceSpan{
+						valueStart,
+						valueStart + len(field.value),
+						3}) {
+				t.Fatalf(
+					"incorrect field positions: %+v",
+					field)
 			}
 			for _, field := range directive.fields {
-				if string(data[field.keySpan.start:field.keySpan.end]) != field.key || string(data[field.valueSpan.start:field.valueSpan.end]) != field.value {
-					t.Fatalf("spans do not address original key/value bytes: %+v", field)
+				if string(
+					data[field.keySpan.start:field.keySpan.end]) !=
+					field.key ||
+					string(
+						data[field.valueSpan.start:field.valueSpan.end]) !=
+						field.value {
+					t.Fatalf(
+						"spans do not address "+
+							"original bytes: %+v",
+						field)
 				}
 			}
-			// Apply both edits against original offsets, without production repair code.
-			edited := string(data[:field.valueSpan.start]) + "done" + string(data[field.valueSpan.end:directive.insertAt]) + "uuid: generated" + directive.lineEnding + string(data[directive.insertAt:])
-			want := before + "status:" + tc.editedValue + tc.fieldEnding + afterField + "uuid: generated" + tc.lastEnding + tail
-			if edited != want || string(doc.data) != original {
-				t.Fatalf("edit changed unrelated bytes or original source:\n got %q\nwant %q", edited, want)
+			// Apply both edits against original offsets.
+			edited := string(
+				data[:field.valueSpan.start]) +
+				"done" +
+				string(
+					data[field.valueSpan.end:directive.insertAt]) +
+				"uuid: generated" +
+				directive.lineEnding +
+				string(data[directive.insertAt:])
+			want := before + "status:" +
+				tc.editedValue + tc.fieldEnding +
+				afterField +
+				"uuid: generated" + tc.lastEnding +
+				tail
+			if edited != want ||
+				string(doc.data) != original {
+				t.Fatalf(
+					"edit changed bytes:\n"+
+						" got %q\nwant %q",
+					edited, want)
 			}
-			reparsed, err := parseMarkdownDocument(doc.path, []byte(edited))
+			reparsed, err := parseMarkdownDocument(
+				doc.path, []byte(edited))
 			if err != nil {
 				t.Fatal(err)
 			}
-			fields := reparsed.root.children[0].directives[0].fields
-			if len(fields) != 3 || fields[0].value != "done" || fields[2].key != "uuid" || fields[2].value != "generated" {
-				t.Fatalf("edited metadata not retained: %+v", fields)
+			fields := reparsed.root.children[0].
+				directives[0].fields
+			if len(fields) != 3 ||
+				fields[0].value != "done" ||
+				fields[2].key != "uuid" ||
+				fields[2].value != "generated" {
+				t.Fatalf(
+					"edited metadata not retained: %+v",
+					fields)
 			}
 		})
 	}

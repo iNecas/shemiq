@@ -8,15 +8,17 @@ import (
 	"strings"
 )
 
-// Store lazily loads a project, directory, or Markdown file scope. Documents
-// are snapshots for its lifetime; queries never follow metadata references.
-// Construction does not inspect the filesystem or require an existing project.
+// Store lazily loads a project, directory, or Markdown file scope.
+// Tasks are snapshots for its lifetime; queries never follow metadata
+// references. Construction does not inspect the filesystem or require
+// an existing project.
 type Store struct {
 	cwd       string
 	selection string
 	scope     *storeScope
-	documents map[string]*parsedDocument
+	tasks     map[string]*Task
 	aliases   map[string]string
+	loaded    bool
 }
 
 type storeScope struct {
@@ -27,94 +29,114 @@ type storeScope struct {
 func NewStore(cwd, path string) (*Store, error) {
 	cwd, err := filepath.Abs(cwd)
 	if err != nil {
-		return nil, fmt.Errorf("resolve invocation directory: %w", err)
+		return nil, fmt.Errorf(
+			"resolve invocation directory: %w", err)
 	}
 	if path != "" {
 		path = invocationPath(cwd, path)
 	}
 	return &Store{
 		cwd: cwd, selection: path,
-		documents: make(map[string]*parsedDocument),
-		aliases:   make(map[string]string),
+		tasks:   make(map[string]*Task),
+		aliases: make(map[string]string),
 	}, nil
 }
 
-// TaskByPath returns the requested document's primary task, including semantic
-// issues. A directory argument selects top-level.md; other filenames are valid.
+// TaskByPath returns the requested document's primary task,
+// including semantic issues. A directory argument selects
+// top-level.md; other filenames are valid. The complete
+// configured scope is loaded before the first query.
 func (s *Store) TaskByPath(path string) (Task, error) {
-	if err := s.resolveScope(); err != nil {
+	if err := s.load(); err != nil {
 		return Task{}, err
 	}
 	path = invocationPath(s.cwd, path)
 	if _, cached := s.aliases[path]; !cached {
 		info, err := os.Stat(path)
 		if err != nil {
-			return Task{}, fmt.Errorf("inspect %s: %w", path, err)
+			return Task{}, fmt.Errorf(
+				"inspect %s: %w", path, err)
 		}
 		if info.IsDir() {
 			path = filepath.Join(path, "top-level.md")
 		}
 	}
 	if !isMarkdown(path) {
-		return Task{}, fmt.Errorf("not a Markdown file: %s", path)
+		return Task{}, fmt.Errorf(
+			"not a Markdown file: %s", path)
 	}
 	resolved, err := s.documentPath(path)
 	if err != nil {
 		return Task{}, err
 	}
-	// Scope is enforced independently of the cache: validation may later load
-	// references outside this selection through loadDocument.
 	if !s.contains(resolved) {
-		return Task{}, fmt.Errorf("document is outside store scope %s: %s", s.scope.path, path)
+		return Task{}, fmt.Errorf(
+			"document is outside store scope %s: %s",
+			s.scope.path, path)
 	}
-	return s.loadDocument(path, false)
+	t := s.tasks[resolved]
+	if t == nil {
+		return Task{}, fmt.Errorf(
+			"inspect %s: file not found in store",
+			path)
+	}
+	return *t, nil
 }
 
-// TopLevelTasks returns candidates in path order without filtering statuses or
-// requiring valid metadata. Default project scope uses conventional documents
-// in immediate active task directories; explicit directories scan recursively.
+// TopLevelTasks returns scoped tasks with usable top-level
+// type in path order, without filtering statuses. Selection
+// uses cached snapshots and never rescans the filesystem.
 func (s *Store) TopLevelTasks() ([]Task, error) {
-	if err := s.resolveScope(); err != nil {
+	if err := s.load(); err != nil {
 		return nil, err
 	}
-	var paths []string
-	if s.selection == "" {
-		entries, err := os.ReadDir(s.scope.path)
-		if err != nil {
-			return nil, fmt.Errorf("list %s: %w", s.scope.path, err)
-		}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				paths = append(paths, filepath.Join(s.scope.path, entry.Name(), "top-level.md"))
-			}
-		}
-	} else if s.scope.directory {
-		err := filepath.WalkDir(s.scope.path, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if !entry.IsDir() && isMarkdown(path) {
-				paths = append(paths, path)
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, fmt.Errorf("scan %s: %w", s.scope.path, err)
-		}
-	} else {
-		paths = []string{s.selection}
-	}
 	var tasks []Task
-	for _, path := range paths {
-		t, err := s.TaskByPath(path)
-		if err != nil {
-			return nil, err
-		}
-		if s.selection == "" || t.Type == TypeTopLevel {
-			tasks = append(tasks, t)
+	for _, t := range s.scopedTasks() {
+		if t.Type == TypeTopLevel {
+			tasks = append(tasks, *t)
 		}
 	}
 	return tasks, nil
+}
+
+// load initializes the store's scope and eagerly loads all
+// Markdown files in it. Idempotent after success; a failed
+// call can be retried without duplicating task records.
+func (s *Store) load() error {
+	if s.loaded {
+		return nil
+	}
+	if err := s.resolveScope(); err != nil {
+		return err
+	}
+	if !s.scope.directory {
+		if _, err := s.loadTask(s.scope.path, false); err != nil {
+			return err
+		}
+		s.loaded = true
+		return nil
+	}
+	err := filepath.WalkDir(
+		s.scope.path,
+		func(path string, entry fs.DirEntry,
+			err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.Type().IsRegular() && isMarkdown(path) {
+				if _, err := s.loadTask(
+					path, false); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	if err != nil {
+		return fmt.Errorf(
+			"load scope %s: %w", s.scope.path, err)
+	}
+	s.loaded = true
+	return nil
 }
 
 func (s *Store) resolveScope() error {
@@ -129,10 +151,13 @@ func (s *Store) resolveScope() error {
 		}
 		info, err := os.Stat(project)
 		if os.IsNotExist(err) {
-			return fmt.Errorf("no .shemiq directory found above %s", s.cwd)
+			return fmt.Errorf(
+				"no .shemiq directory found above %s",
+				s.cwd)
 		}
 		if err != nil {
-			return fmt.Errorf("inspect %s: %w", project, err)
+			return fmt.Errorf(
+				"inspect %s: %w", project, err)
 		}
 		if !info.IsDir() {
 			return fmt.Errorf("not a directory: %s", project)
@@ -143,14 +168,17 @@ func (s *Store) resolveScope() error {
 	if err != nil {
 		return fmt.Errorf("inspect %s: %w", path, err)
 	}
-	if !info.IsDir() && (!info.Mode().IsRegular() || !isMarkdown(path)) {
+	if !info.IsDir() &&
+		(!info.Mode().IsRegular() || !isMarkdown(path)) {
 		return fmt.Errorf("not a Markdown file: %s", path)
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return fmt.Errorf("resolve %s: %w", path, err)
 	}
-	s.scope = &storeScope{path: resolved, directory: info.IsDir()}
+	s.scope = &storeScope{
+		path: resolved, directory: info.IsDir(),
+	}
 	return nil
 }
 
@@ -163,40 +191,49 @@ func (s *Store) contains(path string) bool {
 		!strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-// loadDocument loads a parsed snapshot and converts its primary task. It is
-// independent of query scope so validation can follow references and refresh
-// after repairs. All directives remain available through the task's document;
-// query-structure findings are separate from directive metadata checks.
-func (s *Store) loadDocument(path string, refresh bool) (Task, error) {
+// loadTask loads a parsed snapshot, converts its primary task
+// with embedded subtasks, and caches the result. It is
+// independent of query scope so validation can follow
+// references and refresh after repairs.
+func (s *Store) loadTask(
+	path string, refresh bool,
+) (*Task, error) {
 	path = invocationPath(s.cwd, path)
 	if !isMarkdown(path) {
-		return Task{}, fmt.Errorf("not a Markdown file: %s", path)
+		return nil, fmt.Errorf("not a Markdown file: %s", path)
 	}
 	resolved, err := s.documentPath(path)
 	if err != nil {
-		return Task{}, err
+		return nil, err
 	}
-	doc := s.documents[resolved]
-	if doc == nil || refresh {
-		info, err := os.Stat(resolved)
-		if err != nil {
-			return Task{}, fmt.Errorf("inspect %s: %w", resolved, err)
-		}
-		if !info.Mode().IsRegular() {
-			return Task{}, fmt.Errorf("not a Markdown file: %s", path)
-		}
-		data, err := os.ReadFile(resolved)
-		if err != nil {
-			return Task{}, fmt.Errorf("read %s: %w", resolved, err)
-		}
-		doc, err = parseMarkdownDocument(resolved, data)
-		if err != nil {
-			return Task{}, err
-		}
-		// A failed read/parse leaves the previous snapshot intact.
-		s.documents[resolved] = doc
+	cached := s.tasks[resolved]
+	if cached != nil && !refresh {
+		return cached, nil
 	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return nil, fmt.Errorf("inspect %s: %w", resolved, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("not a Markdown file: %s", path)
+	}
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", resolved, err)
+	}
+	doc, err := parseMarkdownDocument(resolved, data)
+	if err != nil {
+		return nil, err
+	}
+	// A failed read/parse leaves the previous snapshot intact.
+	result := documentTask(doc)
+	s.tasks[resolved] = &result
+	return &result, nil
+}
 
+// documentTask converts a parsed document into a primary
+// task with embedded subtasks.
+func documentTask(doc *parsedDocument) Task {
 	var primary *parsedSection
 	for _, section := range doc.root.children {
 		if section.level == 1 {
@@ -206,23 +243,29 @@ func (s *Store) loadDocument(path string, refresh bool) (Task, error) {
 	}
 	if primary == nil {
 		return Task{
-			Path: doc.path, ProjectRoot: documentProjectRoot(doc.path), document: doc,
+			Path:        doc.path,
+			ProjectRoot: documentProjectRoot(doc.path),
+			document:    doc,
 			Issues: []Issue{{Path: doc.path, Line: 1,
-				Message: "missing primary task heading/directive pair"}},
-		}, nil
+				Message: "missing primary task " +
+					"heading/directive pair"}},
+		}
 	}
 	result := sectionTask(doc, primary, false)
 	for _, section := range primary.children {
-		if section.level != 2 || section.title != "Tasks" {
+		if section.level != 2 ||
+			section.title != "Tasks" {
 			continue
 		}
 		for _, entry := range section.children {
-			if entry.level == 3 && adjacentDirective(doc, entry) != nil {
-				result.Subtasks = append(result.Subtasks, sectionTask(doc, entry, true))
+			if entry.level == 3 {
+				result.Subtasks = append(
+					result.Subtasks,
+					sectionTask(doc, entry, true))
 			}
 		}
 	}
-	return result, nil
+	return result
 }
 
 func (s *Store) documentPath(path string) (string, error) {
