@@ -24,7 +24,11 @@ func newValidateCommand() *cobra.Command {
 			if len(args) > 0 {
 				path = args[0]
 			}
-			issues, err := task.Validate(cwd, path, fix)
+			store, err := task.NewStore(cwd, path)
+			if err != nil {
+				return err
+			}
+			issues, err := store.Validate(fix)
 			if err != nil {
 				return err
 			}

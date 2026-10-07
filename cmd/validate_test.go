@@ -15,7 +15,8 @@ const testUUID = "12345678-1234-4234-8234-123456789abc"
 
 func TestValidateScopeAndDuplicates(t *testing.T) {
 	project := t.TempDir()
-	dir := filepath.Join(project, ".shemiq")
+	shemiq := filepath.Join(project, ".shemiq")
+	dir := filepath.Join(shemiq, "tasks")
 	withUUID := fmt.Sprintf(utils.Dedent(`
 		:::shemiq
 		uuid: %s
@@ -26,6 +27,8 @@ func TestValidateScopeAndDuplicates(t *testing.T) {
 	writeTestMarkdown(t, filepath.Join(dir, "nested", "plain.md"), utils.Dedent(`
 		No metadata
 		`))
+	// Archived metadata is excluded by the default active-tasks scope.
+	writeTestMarkdown(t, filepath.Join(shemiq, "archive", "old.md"), withUUID)
 	cwd := filepath.Join(project, "subdir")
 	if err := os.Mkdir(cwd, 0755); err != nil {
 		t.Fatal(err)
@@ -285,9 +288,6 @@ func TestValidateInvalidMetadataAndReferences(t *testing.T) {
 		source: ./later.md
 		uuid: %s
 		:::
-		:::shemiq
-		not a field
-		:::
 		`), testUUID)
 	path := writeTestMarkdown(t, filepath.Join(dir, "bad.md"), original)
 	t.Chdir(dir)
@@ -295,7 +295,7 @@ func TestValidateInvalidMetadataAndReferences(t *testing.T) {
 	if err == nil || out != "" {
 		t.Fatalf("invalid metadata: out=%q diag=%q err=%v", out, diag, err)
 	}
-	for _, message := range []string{"invalid type", "invalid status", "repeated metadata field", "unknown metadata field", "invalid UUIDv4", "parent is not an existing file", "source and uuid are mutually exclusive", "malformed metadata field", "missing uuid"} {
+	for _, message := range []string{"invalid type", "invalid status", "repeated metadata field", "unknown metadata field", "invalid UUIDv4", "parent is not an existing file", "source and uuid are mutually exclusive"} {
 		if !strings.Contains(diag, message) {
 			t.Errorf("missing %q in %q", message, diag)
 		}
@@ -309,6 +309,108 @@ func TestValidateInvalidMetadataAndReferences(t *testing.T) {
 	}
 }
 
+// An existing non-Markdown or directory target is a located invalid-reference
+// finding and is not traversed; an archived file reached through a reference is
+// loaded and validated even though the default scope excludes archives.
+func TestValidateNonMarkdownAndReachableArchive(t *testing.T) {
+	project := t.TempDir()
+	tasks := filepath.Join(project, ".shemiq", "tasks", "example")
+	writeTestMarkdown(t, filepath.Join(project, ".shemiq", "archive", "old.md"),
+		fmt.Sprintf(utils.Dedent(`
+			:::shemiq
+			type: task
+			uuid: %s
+			:::
+			`), testUUID))
+	parent := writeTestMarkdown(t, filepath.Join(tasks, "top-level.md"),
+		fmt.Sprintf(utils.Dedent(`
+			:::shemiq
+			type: top-level
+			uuid: %s
+			:::
+			:::shemiq
+			type: task
+			source: ./notes.txt
+			:::
+			:::shemiq
+			type: task
+			source: ../../../.shemiq/archive/old.md
+			:::
+			`), testUUID))
+	if err := os.WriteFile(filepath.Join(tasks, "notes.txt"), []byte("plain"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(tasks)
+	_, diag, err := runCommand("", "validate", parent)
+	// The archived file is reachable, so its duplicate UUID is reported; the
+	// text target is flagged, not loaded.
+	if err == nil || !strings.Contains(diag, "source is not a Markdown file: ./notes.txt") ||
+		!strings.Contains(diag, "duplicate uuid") {
+		t.Fatalf("references: diag=%q err=%v", diag, err)
+	}
+}
+
+// All eligible promotions across a linked group complete in one run, each with
+// a single edit, and a second run changes nothing.
+func TestValidateLinkedGroupConverges(t *testing.T) {
+	dir := t.TempDir()
+	parent := writeTestMarkdown(t, filepath.Join(dir, "top-level.md"),
+		fmt.Sprintf(utils.Dedent(`
+			# Parent
+			:::shemiq
+			type: top-level
+			uuid: %s
+			:::
+			## Tasks
+			### First
+			:::shemiq
+			type: task
+			source: ./first.md
+			status: done
+			:::
+			### Second
+			:::shemiq
+			type: task
+			source: ./second.md
+			status: new
+			:::
+			`), testUUID))
+	writeTestMarkdown(t, filepath.Join(dir, "first.md"), utils.Dedent(`
+		# First
+		:::shemiq
+		type: task
+		parent: ./top-level.md
+		status: new
+		:::
+		`))
+	writeTestMarkdown(t, filepath.Join(dir, "second.md"), utils.Dedent(`
+		# Second
+		:::shemiq
+		type: task
+		parent: ./top-level.md
+		status: refined
+		:::
+		`))
+	t.Chdir(dir)
+	// Each reciprocal link is its own group: first converges to done, second to
+	// refined, all in a single run.
+	_, diag, err := runCommand("", "validate", "--fix", parent)
+	if err != nil || strings.Count(diag, "fixed: status promoted to done") != 1 ||
+		strings.Count(diag, "fixed: status promoted to refined") != 1 {
+		t.Fatalf("one-run convergence: diag=%q err=%v", diag, err)
+	}
+	first, _ := os.ReadFile(filepath.Join(dir, "first.md"))
+	second, _ := os.ReadFile(filepath.Join(dir, "second.md"))
+	if strings.Count(string(first), "status: done") != 1 ||
+		strings.Count(string(second), "status: refined") != 1 {
+		t.Fatalf("unexpected convergence: %q %q", first, second)
+	}
+	_, diag, err = runCommand("", "validate", "--fix", parent)
+	if err != nil || diag != "" {
+		t.Fatalf("second run not idempotent: diag=%q err=%v", diag, err)
+	}
+}
+
 func TestValidateNoProject(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -318,6 +420,44 @@ func TestValidateNoProject(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, ".shemiq")); !os.IsNotExist(statErr) {
 		t.Fatalf("validation created project: %v", statErr)
+	}
+}
+
+// A malformed field is a fatal syntax error: validation stops and performs no
+// repairs, whether the syntax error is in the selected file or a reference.
+func TestValidateFatalSyntaxStopsValidation(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	broken := writeTestMarkdown(t, filepath.Join(dir, "broken.md"), utils.Dedent(`
+		:::shemiq
+		not a field
+		:::
+		`))
+	_, diag, err := runCommand("", "validate", "--fix", broken)
+	if err == nil || !strings.Contains(diag, "malformed metadata field") ||
+		strings.Contains(diag, "fixed:") {
+		t.Fatalf("direct syntax error: diag=%q err=%v", diag, err)
+	}
+	before, _ := os.ReadFile(broken)
+
+	parent := writeTestMarkdown(t, filepath.Join(dir, "top-level.md"), fmt.Sprintf(utils.Dedent(`
+		:::shemiq
+		type: top-level
+		uuid: %s
+		:::
+		:::shemiq
+		type: task
+		source: ./broken.md
+		:::
+		`), testUUID))
+	_, diag, err = runCommand("", "validate", "--fix", parent)
+	if err == nil || !strings.Contains(diag, "malformed metadata field") ||
+		strings.Contains(diag, "fixed:") {
+		t.Fatalf("referenced syntax error: diag=%q err=%v", diag, err)
+	}
+	after, _ := os.ReadFile(broken)
+	if string(before) != string(after) {
+		t.Fatalf("syntax failure performed repairs: %q", after)
 	}
 }
 

@@ -173,13 +173,27 @@ cache and `interpretedDirective` type. Only parsed documents are cached;
 local fields/findings are computed on demand. Focused regressions,
 `go test ./...`, and `go vet ./...` pass.
 
-Validation/repairs and creation/archive remain `new` and will be refined
-separately. Legacy validation and repairs remain functional, sharing local
-field checks with store conversion. Existing creation code has moved unchanged
-to `create.go`; its public API and archive behavior are not yet migrated.
-Validation can reuse the private loader, the returned task's defining document,
-and `directiveFields` without imposing primary-task structure on metadata-only
-documents. Refresh replaces parsed snapshots without a separate metadata cache.
+Validation/repairs is now `done`: `(*Store).Validate(fix)` replaces the legacy
+pipeline. It enumerates the configured scope (default active `.shemiq/tasks/`),
+follows usable `source`/`parent` references deduplicated by filesystem identity,
+and collects local findings through `directiveFields` on every directive
+(including headingless/status-only) without imposing primary-task structure.
+Cross-document checks cover UUID uniqueness, reference suitability (missing
+parents, directory and non-Markdown targets reported; missing sources allowed),
+and reciprocal task links. Repairs use field-specific safety, insert UUIDs only
+when both `source` and `uuid` are absent, and finish all linked-status
+promotions in one idempotent run via a small union-find over eligible pairs.
+Edits are batched per document against original snapshots (combining UUID/status
+inserts at the closer), then affected snapshots are refreshed before the final
+semantic pass. `cmd/validate.go` uses `NewStore`+`Validate`; the package-level
+`Validate`, `metadata.go`, and the legacy document/directive types were removed,
+with `metadataKeyPattern`/`lineEnding` moved into `parse.go`. A malformed field
+is now a fatal syntax error rather than a finding. `go test ./...`, `go vet
+./...`, and `git diff --check` pass.
+
+Creation/archive remains `new` for a separate refinement. Existing creation code
+still lives unchanged in `create.go`; its public API and archive behavior are
+not yet migrated.
 
 ## Tasks
 
@@ -210,7 +224,7 @@ and refinement loaders are retired.
 :::shemiq
 type: task
 source: ./consolidate-validation-and-repairs.md
-status: new
+status: done
 :::
 
 Implement store-based validation that collects conversion issues, loads referenced documents, checks cross-document semantics, and preserves existing targeted repair behavior.

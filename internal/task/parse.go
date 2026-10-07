@@ -3,8 +3,11 @@ package task
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+var metadataKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
 
 // sourceSpan uses zero-based, half-open byte offsets into the original data.
 // line is the one-based diagnostic line at start.
@@ -166,6 +169,20 @@ func parseMarkdownField(path, text string, span sourceSpan) (parsedField, error)
 		keySpan:   sourceSpan{span.start, span.start + len(key), span.line},
 		valueSpan: sourceSpan{valueStart, valueStart + len(trimmed), span.line},
 	}, nil
+}
+
+func lineEnding(data []byte, before int) string {
+	// Prefer the style immediately preceding the closing line, even for mixed files.
+	if before > 0 && data[before-1] == '\n' {
+		if before > 1 && data[before-2] == '\r' {
+			return "\r\n"
+		}
+		return "\n"
+	}
+	if i := bytes.IndexByte(data, '\n'); i >= 1 && data[i-1] == '\r' {
+		return "\r\n"
+	}
+	return "\n"
 }
 
 func markdownHeading(text string) (int, string, bool) {
