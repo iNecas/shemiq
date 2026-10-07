@@ -24,7 +24,8 @@ func newNewCommand(result io.Writer) *cobra.Command {
 			}
 			if !cmd.Flags().Changed("title") {
 				var err error
-				title, err = readTitle(cmd.ErrOrStderr(), cmd.InOrStdin())
+				title, err = readTitle(
+					cmd.ErrOrStderr(), cmd.InOrStdin())
 				if err != nil {
 					return err
 				}
@@ -33,11 +34,12 @@ func newNewCommand(result io.Writer) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("get working directory: %w", err)
 			}
-			projectDir, err := task.FindProjectDirectory(cwd)
+			store, err := task.NewStore(cwd, "")
 			if err != nil {
 				return err
 			}
-			path, err := task.CreateTopLevelTask(projectDir, description, title)
+			path, err := store.CreateTopLevel(
+				title, description)
 			if err != nil {
 				return err
 			}
@@ -45,11 +47,14 @@ func newNewCommand(result io.Writer) *cobra.Command {
 			return err
 		},
 	}
-	newCommand.Flags().StringVar(&title, "title", "", "Title for the new task (prompts if omitted)")
+	newCommand.Flags().StringVar(
+		&title, "title", "", "Title for the new task (prompts if omitted)")
 	return newCommand
 }
 
-func readTitle(prompt io.Writer, input io.Reader) (string, error) {
+func readTitle(
+	prompt io.Writer, input io.Reader,
+) (string, error) {
 	if _, err := fmt.Fprint(prompt, "Title: "); err != nil {
 		return "", err
 	}

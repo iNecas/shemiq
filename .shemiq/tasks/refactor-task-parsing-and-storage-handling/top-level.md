@@ -225,9 +225,13 @@ in default scope; empty directories do not cause missing-file listing errors.
 Explicit directory lookups still require `top-level.md`. Tests cover cached
 candidate stability after external changes and updated refinement selection.
 
-Creation/archive remains `new` for a separate refinement. Existing creation code
-still lives unchanged in `create.go`; its public API and archive behavior are
-not yet migrated.
+Creation/archive is now `done`. `(*Store).CreateTopLevel` replaces the
+package-level `CreateTopLevelTask`, discovering the project from invocation
+context independently of read scope. Cache insertion occurs only when the store
+is already loaded and the file is in scope. Slug generation uses a compiled
+regexp. Archive orchestration moved to `cmd/archive.go` as private functions;
+`internal/task/archive.go` was removed. `FindProjectDirectory` remains shared.
+All existing tests pass; focused store creation tests were added.
 
 ## Tasks
 
@@ -298,10 +302,16 @@ for approved loading, cache, validation, and repair behavior.
 :::shemiq
 type: task
 source: ./consolidate-creation-and-archive-boundaries.md
-status: new
+status: done
 :::
 
 Move creation behind the store API, retain filesystem-only archive orchestration in its command, and remove superseded implementations and public entry points.
 
 Store handoff: existing creation helpers now live unchanged in `create.go`;
 `Store` retains invocation context and can be constructed before a project exists.
+
+Refinement note: creation always discovers its destination from invocation
+context, independently of read scope. Cache newly created in-scope tasks only
+when the store is already loaded; post-write parsing errors leave the created
+file in place. Replace manual slug generation with regexp-based cleanup while
+preserving ASCII-only behavior. See the linked task for the approved plan.
