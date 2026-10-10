@@ -132,6 +132,21 @@ without sub-task refinement.
 
 This should still produce the separate sub-task file at the end of the implementation.
 
+**5. Archive a top-level task when done**
+
+Run `shemiq archive` to choose a task interactively, or provide an explicit path:
+
+```sh
+shemiq archive                                      # interactive
+shemiq archive .shemiq/tasks/$MY_TASK               # task directory
+```
+
+The selected task directory is move to `.shemiq/archive/YYYY-MM-DD-<task-directory-name>/`.
+
+The task documents tent to have quite high slop density and are not expected
+to have a long lasting value (beyond the implemenation phase itself).  However,
+sometimes they are helpful when new tasks refer to some work done in the past.
+
 ## Inspiration
 
 * [tasktron](https://kevinlynagh.com/newsletter/2026_09_task_workflow/#a-single-file-llm-task-workflow-harness) — a simple Clojure based implementation of local deterministic harness.

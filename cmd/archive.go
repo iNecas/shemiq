@@ -7,21 +7,32 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/iNecas/shemiq/internal/console"
 	"github.com/iNecas/shemiq/internal/task"
 	"github.com/spf13/cobra"
 )
 
 func newArchiveCommand(result io.Writer) *cobra.Command {
 	return &cobra.Command{
-		Use:   "archive <path>",
+		Use:   "archive [path]",
 		Short: "Move a task directory into the dated archive",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("get working directory: %w", err)
 			}
-			path, err := archiveTask(cwd, args[0])
+			path := ""
+			if len(args) > 0 {
+				path = args[0]
+			} else {
+				ui := console.New(cmd.InOrStdin(), cmd.ErrOrStderr())
+				path, err = pickArchiveTask(cwd, ui)
+				if err != nil {
+					return err
+				}
+			}
+			path, err = archiveTask(cwd, path)
 			if err != nil {
 				return err
 			}
@@ -29,6 +40,41 @@ func newArchiveCommand(result io.Writer) *cobra.Command {
 			return err
 		},
 	}
+}
+
+func pickArchiveTask(cwd string, ui *console.Console) (string, error) {
+	store, err := task.NewStore(cwd, "")
+	if err != nil {
+		return "", err
+	}
+	candidates, err := store.TopLevelTasks()
+	if err != nil {
+		return "", err
+	}
+	projectDir, err := task.FindProjectDirectory(cwd)
+	if err != nil {
+		return "", err
+	}
+	tasksDir := filepath.Join(projectDir, "tasks")
+	var choices []string
+	var labels []string
+	for _, candidate := range candidates {
+		// Store discovery is generic; archive candidates require the standard layout.
+		if filepath.Base(candidate.Path) != "top-level.md" ||
+			filepath.Dir(filepath.Dir(candidate.Path)) != tasksDir {
+			continue
+		}
+		choices = append(choices, filepath.Dir(candidate.Path))
+		labels = append(labels, fmt.Sprintf("%s [%s]", candidate.Title, candidate.Status))
+	}
+	if len(choices) == 0 {
+		return "", fmt.Errorf("no eligible tasks to archive")
+	}
+	i, err := ui.Pick("Select a task:", labels)
+	if err != nil {
+		return "", err
+	}
+	return choices[i], nil
 }
 
 // archiveTask moves one task directory from the nearest
