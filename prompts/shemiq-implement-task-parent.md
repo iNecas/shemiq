@@ -26,6 +26,8 @@ Limit the tests to minimum, mostly when they positively contribute to the develo
 Write the notes from the implementation to the task file and update the current status
 section in the top level file.
 
+Use concise bullet-points style.
+
 ## Shemiq structure
 
 We use shemiq tool to manage the structure of the documents. Load `shemiq` skill for more details.

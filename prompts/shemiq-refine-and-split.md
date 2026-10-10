@@ -9,7 +9,7 @@ Explore the current project context and ask questions one at a time to refine th
 Once you understand what you're building, present the design in small sections (200-300 words), checking after each section whether it looks right so far.
 
 Propose the split to the tasks, but limit it to the titles, shemiq directives
-and single-sentence descriptions. They will be revined sparately.
+and single-sentence descriptions. They will be refined sparately.
 
 ## The Process
 
@@ -31,12 +31,27 @@ and single-sentence descriptions. They will be revined sparately.
 - Present options conversationally with your recommendation and reasoning
 - Lead with your recommended option and explain why
 
-**Presenting the design:**
-- Once you believe you understand what you're building, present the design
+**Exploring the design:**
+- Once you believe you understand what you're building, continue with the questions
+  about the high-level design common for all tasks (leave low-level for sub-tasks refinement phase).
+- Cover: architecture, components, data flow, error handling, testing
+- Continue using the questions/options style.
+
+**Summarizing the answers**
+- Once all the questions has been answered, summarize the answers gathered in the interview 
 - Break it into concise bullet-points
 - Ask after each section whether it looks right so far
 - Cover: architecture, components, data flow, error handling, testing
 - Be ready to go back and clarify if something doesn't make sense
+
+**Splitting to sub-tasks**
+- The last phase before writing down the results is to propose the split
+  to subtasks to follow during the further development.
+
+**Updating the document**
+- Use the information from the interview to fill in the rest of the document
+- **Don't include anything that was not discussed explicitly during the interview**
+- Use concise bullet-points style.
 
 ## The written document
 

@@ -44,6 +44,11 @@ Once you understand what you're building, present the design in small sections (
 - Ask after each section whether it looks right so far
 - Be ready to go back and clarify if something doesn't make sense
 
+**Updating the document**
+- Use the information from the interview to fill in the rest of the document
+- **Don't include anything that was not discussed explicitly during the interview**
+- Use concise bullet-points style.
+
 ## The written document
 
 Once the user approves the refinement, write the agreed context and plan in a
