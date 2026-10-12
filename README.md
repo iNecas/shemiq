@@ -132,7 +132,17 @@ without sub-task refinement.
 
 This should still produce the separate sub-task file at the end of the implementation.
 
-**5. Archive a top-level task when done**
+**5. View the task hierarchy**
+
+Display a human-readable tree of all tasks and their statuses:
+
+```sh
+shemiq tree                              # discover nearest .shemiq/tasks
+shemiq tree .shemiq/tasks/my-feature     # explicit directory scope
+shemiq tree --json                       # machine-readable JSON output
+```
+
+**6. Archive a top-level task when done**
 
 Run `shemiq archive` to choose a task interactively, or provide an explicit path:
 

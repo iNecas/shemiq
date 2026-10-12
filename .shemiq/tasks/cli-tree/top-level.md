@@ -43,12 +43,18 @@ status: refined
 - Both output modes share the same validated model and scope rules. Empty human output reports `No tasks.`; empty JSON output contains an empty `tasks` array.
 - Approve the revised four-task split, keeping the completed store-export task and adding a separate naming alignment task before command implementation and type generation.
 - Rename the feature directory to `.shemiq/tasks/cli-tree/`; preserve existing UUIDs and completed implementation history.
+- Command refinement: use unprefixed human roots, Unicode child connectors, `Title [status]` labels, and two-space JSON indentation with trailing newlines.
+- Supersede the original no-color rule: automatically color only status words on terminal result streams (`new` cyan, `refined` yellow, `done` green); disable color for pipes/files, `NO_COLOR`, or `TERM=dumb`. Add no color flag; JSON remains uncolored.
+- Place human rendering and reusable color utilities in `internal/console`; retain JSON serialization, diagnostics, and final result writing in `cmd`. Consume the existing DTO without a separate presentation model.
+- Keep runtime diagnostics concise without usage text; retain normal Cobra help for argument/flag mistakes and leave other commands unchanged.
 
 ## Design
 
 ### Architecture and components
 
-- Keep the Cobra command thin: create the store, request the read-only tree, and render human-readable output or serialize JSON.
+- Keep the Cobra command thin: create the store, request the read-only tree, select output mode, prepare the complete result, and write it.
+- Put human tree rendering in `internal/console/tree.go` and terminal/environment checks plus reusable ANSI helpers in `internal/console/color.go`; keep JSON serialization and diagnostics in `cmd/tree.go`.
+- Use `console.ColorEnabled(output io.Writer) bool` and `console.RenderTree(document task.TreeDocument, color bool) string`; consume the existing DTO directly and leave the interactive console API unchanged.
 - Rename the implemented store operation to `Store.Tree() (TreeDocument, error)` in `internal/task/tree.go`; reuse shared validation from `validate.go` before merged-tree construction. The command must not inspect parser internals or assemble relationships itself.
 - Keep `ValidationError`, its `Error()` method, and `validationIssuesToError` with the tree operation; semantic failures carry located issues.
 - Rename the dedicated DTOs to `TreeDocument` and `TreeNode`, with `TreeTaskType`, `TreeStatus`, and corresponding constants, separate from the internal task/parser structs; no separate DTO package is needed.
@@ -59,8 +65,10 @@ status: refined
 ### Command and human-readable output
 
 - Provide `shemiq tree [dir]` and `shemiq tree [dir] --json`; neither mode prompts or launches Pi.
-- Human-readable output is the default and shows each node's title and status with tree connectors making parent-child relationships visible.
-- Do not add paths, UUIDs, colors, filtering, or interactive controls to human-readable output.
+- Human-readable output is the default: print `Title [status]` with unprefixed roots, Unicode child connectors, no synthetic root or blank separators, and a trailing newline.
+- Color only status words on terminal result streams: `new` cyan, `refined` yellow, `done` green. Keep brackets, titles, and connectors plain; reset immediately after each status, with no bold or background colors.
+- Use the existing `golang.org/x/term` dependency for detection; disable color for non-terminal/unrecognized writers, pipes/files, when `NO_COLOR` is set, or when `TERM=dumb`. Add no color flag.
+- Do not add paths, UUIDs, filtering, or interactive controls to human-readable output.
 - Use the same validated tree and ordering for both modes; only rendering differs.
 - An existing valid directory with no task documents succeeds and reports `No tasks.` in human mode.
 - JSON is the only machine-readable format; do not introduce format flags or additional formats.
@@ -80,7 +88,7 @@ status: refined
 
 ### JSON and cross-language contract
 
-- Return one JSON object with a `tasks` array.
+- Return one JSON object with a `tasks` array, using two-space indentation and a trailing newline; never include ANSI color escapes.
 - Each node contains `type`, `title`, `status`, `projectRoot`, and `subtasks`.
 - Include `path` as a resolved absolute document/target path when available; omit it for inline entries without a target.
 - Include `uuid` when available; omit it for uncreated source-backed subtasks without a UUID.
@@ -96,7 +104,8 @@ status: refined
 ### Error handling
 
 - Finish loading, validation, tree construction, and rendering/JSON encoding before writing the result.
-- Validity failures return an error/nonzero exit, report diagnostics on stderr, and produce no partial human tree or JSON.
+- Preparation failures return an error/nonzero exit, report diagnostics on stderr, and leave stdout empty. Propagate output-writer failures; already written bytes cannot be rolled back.
+- Print validation findings once as `path:line: message`, without a duplicate summary. Runtime failures omit usage text; argument/flag mistakes retain normal Cobra help. Apply this policy only to the tree command.
 - Reject unreadable files, syntax errors, structural task problems, invalid metadata, duplicate UUIDs, broken reciprocal links, and linked-status mismatches.
 - Apply validity checks to the complete reached closure, which is also the represented document set.
 - Main validation permits source references only on parent-list entries and parent references only on child-document primary tasks; reciprocal links connect those locations.
@@ -108,22 +117,27 @@ status: refined
 ### Testing
 
 - Reuse one representative command-level fixture for both output modes, covering authoritative merged child metadata, an uncreated child, an external descendant, ordering, and absence of duplicate roots.
-- Check human title/status rendering and JSON contract output over the same model.
-- Keep individual validity-rule coverage in validation tests; command failure tests check validation-before-output flow, file-argument rejection, and absence of partial output in both modes.
+- Check exact plain human layout and final newline plus JSON contract/indentation over the same model; successful commands leave stderr empty.
+- Keep individual validity-rule coverage in validation tests; compact command failure tests cover validation-before-output flow, file-argument rejection, missing directories, empty stdout, and concise runtime diagnostics in both modes.
 - Check empty-directory behavior in both modes.
+- Add focused console tests for status colors and immediate ANSI resets through explicit color selection; check disabling for buffered writers, `NO_COLOR`, and `TERM=dumb`, without pseudo-terminal infrastructure.
+- Document tree usage, scope/reference expansion, output modes, automatic colors, and read-only failure behavior in `README.md` and `skills/shemiq/SKILL.md`.
 - Reuse existing store tests for the naming-only change; do not duplicate parser or validation-rule tests.
 - Check generated TypeScript for drift and use existing Go test/vet checks.
 - Avoid broad parser retesting, Pi extension tests, and additional test infrastructure.
 
 ## Current status
 
-- Approved tree command, two output modes, and four-task split; store-export and naming subtasks are complete.
-- Renamed store API and contract to `Store.Tree()`/`Tree*` in `internal/task/tree.go`; helpers, constants, diagnostics, and `tree_test.go` follow the same naming, without aliases or wrappers.
-- Preserved the JSON contract, directory scope, reference closure, authoritative merging, hierarchy/order, and read-only behavior.
-- Tree and ordinary validation share `validateAllTasks`, including cached structural/local findings; previous duplicate-finding and cycle-traversal fixes remain intact.
-- `ValidationError`/`validationIssuesToError` live in `tree.go`; validation-rule assertions remain in validation tests.
-- Command and TypeScript-generation subtasks remain `new` and can proceed independently using the renamed contract; human rendering belongs to the command subtask.
-- Verification passed: existing `go test ./...`, `go vet ./...`, task metadata validation, and `git diff --check`; no additional tests were needed.
+- Store-export, naming, and command subtasks are complete; TypeScript generation remains `new`.
+- `shemiq tree [dir]` implemented in `cmd/tree.go`, registered in `cmd/root.go`.
+- Human rendering in `internal/console/tree.go`; color utilities in `internal/console/color.go`.
+- JSON serialization uses `json.MarshalIndent` in the command; both modes share the same `Store.Tree()` model.
+- Automatic terminal color detection with `NO_COLOR` and `TERM=dumb` support; status words colored cyan/yellow/green.
+- Validation errors printed as `path:line: message` on stderr; runtime failures suppress Cobra usage text.
+- Tests cover both output modes, empty directories, validation errors, file rejection, and missing directories.
+- Console tests cover status colors, ANSI resets, and color disabling for non-terminals.
+- Usage documented in `README.md` (step 5) and `skills/shemiq/SKILL.md`.
+- All tests pass: `go test ./...` and `go vet ./...`.
 
 ## Tasks
 
@@ -151,7 +165,7 @@ Align the implemented store API, DTOs/types/constants, implementation/test files
 :::shemiq
 type: task
 source: ./expose-tree-command.md
-status: new
+status: done
 :::
 
 Add `shemiq tree [dir]` with a human-readable title/status tree by default and `--json` selecting the shared JSON contract, all-or-nothing output, minimal command-level tests, and CLI usage documentation.

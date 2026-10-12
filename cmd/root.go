@@ -38,6 +38,7 @@ func newRootCommand(result io.Writer, launcher agent.Launcher) *cobra.Command {
 		newArchiveCommand(result),
 		newRefineCommand(result, launcher),
 		newImplementCommand(result, launcher),
+		newTreeCommand(result),
 	)
 	return root
 }
