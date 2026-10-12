@@ -146,40 +146,41 @@ func TestStoreEntryAndChildAreDistinct(t *testing.T) {
 }
 
 func TestStorePrimaryStructure(t *testing.T) {
-	root := t.TempDir()
-	path := storeFixture(t, root, "structure.md",
-		utils.Dedent(`
-		# First
-		Prose prevents adjacency.
-		`))
-	store, err := NewStore(root, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := store.TaskByPath(path)
-	if err != nil || got.Title != "First" ||
-		got.Status != "" || len(got.Issues) != 1 {
-		t.Fatalf(
-			"primary without directive: task=%+v err=%v",
-			got, err)
-	}
-	if got.document != store.tasks[path].document {
-		t.Fatal("task's document not retained")
-	}
-	path = storeFixture(t, root, "noheading.md",
-		utils.Dedent(`
-		Just prose, no metadata.
-		`))
-	store, err = NewStore(root, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err = store.TaskByPath(path)
-	if err != nil || got.Path != path ||
-		len(got.Issues) != 1 ||
-		got.document != store.tasks[path].document {
-		t.Fatalf("headingless query: task=%+v err=%v",
-			got, err)
+	for _, tc := range []struct {
+		name, content, title, status string
+	}{
+		{"structure", utils.Dedent(`
+			# First
+			Prose prevents adjacency.
+			`), "First", ""},
+		{"noheading", "Just prose, no metadata.\n", "", ""},
+		{"missing_type", utils.Dedent(`
+			# First
+			:::shemiq
+			uuid: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+			:::
+			`), "First", "new"},
+		{"empty_title", utils.Dedent(`
+			#
+			:::shemiq
+			type: task
+			uuid: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+			:::
+			`), "", "new"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := storeFixture(t, root, tc.name+".md", tc.content)
+			store, err := NewStore(root, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := store.TaskByPath(path)
+			if err != nil || got.Title != tc.title || got.Status != tc.status ||
+				got.Path != path || got.document != store.tasks[path].document {
+				t.Fatalf("structural query: task=%+v err=%v", got, err)
+			}
+		})
 	}
 }
 

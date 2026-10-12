@@ -28,8 +28,8 @@ func TestValidateScopeAndDuplicates(t *testing.T) {
 		filepath.Join(dir, "a", "top-level.md"), withUUID)
 	b := writeTestMarkdown(t,
 		filepath.Join(dir, "nested", "b.md"), withUUID)
-	writeTestMarkdown(t,
-		filepath.Join(dir, "nested", "plain.md"),
+	plain := writeTestMarkdown(t,
+		filepath.Join(dir, "plain.md"),
 		utils.Dedent(`
 		No metadata
 		`))
@@ -59,6 +59,7 @@ func TestValidateScopeAndDuplicates(t *testing.T) {
 		out, diag, err := runCommand("", args...)
 		if err == nil || out != "" ||
 			!strings.Contains(diag, "duplicate uuid") ||
+			!strings.Contains(diag, plain+":1: missing primary task heading/directive pair") ||
 			strings.Contains(diag, "Error:") ||
 			strings.Contains(diag, "Usage:") {
 			t.Fatalf("validate %v: out=%q diag=%q err=%v",
@@ -145,6 +146,7 @@ func TestValidateSuccessfulFixAndSourceException(
 		## Tasks
 		### Sub
 		:::shemiq
+		type: task
 		source: ./future.md
 		:::
 		`))
@@ -309,12 +311,21 @@ func TestValidateExistingSourceWithoutBacklink(
 		type: task
 		uuid: 87654321-4321-4321-8321-abcdefabcdef
 		:::
+		## Tasks
+		### Misplaced backlink
+		:::shemiq
+		type: task
+		uuid: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+		parent: ./top-level.md
+		:::
 		`))
 	t.Chdir(dir)
 	_, diag, err := runCommand("", "validate", parent)
-	if err == nil || !strings.Contains(diag,
-		"source ./child.md does not have "+
-			"exactly one reciprocal task parent") {
+	// An entry's parent reference cannot replace the primary task's backlink.
+	if err == nil || !strings.Contains(diag, "parent is not permitted on a parent-list entry") ||
+		!strings.Contains(diag,
+			"source ./child.md does not have "+
+				"exactly one reciprocal task parent") {
 		t.Fatalf("missing backlink: diag=%q err=%v",
 			diag, err)
 	}
@@ -439,6 +450,7 @@ func TestValidateInvalidMetadataAndReferences(
 	}
 	for _, message := range []string{
 		"invalid type",
+		"missing task type",
 		"invalid status",
 		"repeated metadata field",
 		"unknown metadata field",

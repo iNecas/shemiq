@@ -190,11 +190,9 @@ func flatTasks(tasks []*Task) []*Task {
 	return result
 }
 
-// validateAllTasks collects local directive findings and
-// performs cross-document checks: UUID uniqueness, reference
-// suitability, and reciprocal task links. Only tasks with
-// directives contribute metadata findings; structural issues
-// (missing heading/directive) are for queries, not validation.
+// validateAllTasks collects cached structural and local metadata findings,
+// then checks reference suitability, placement, UUID uniqueness, reciprocal
+// links, and graph integrity across the reached closure.
 func (s *Store) validateAllTasks(
 	tasks []*Task,
 ) ([]Issue, error) {
@@ -202,13 +200,7 @@ func (s *Store) validateAllTasks(
 	var issues []Issue
 
 	for _, t := range all {
-		if t.directive == nil {
-			continue
-		}
-		// Local field findings from the directive.
-		_, fieldIssues := directiveFields(
-			t.document.path, t.directive)
-		issues = append(issues, fieldIssues...)
+		issues = append(issues, t.Issues...)
 		refs, err := taskReferenceIssues(t)
 		if err != nil {
 			return nil, err
@@ -216,8 +208,148 @@ func (s *Store) validateAllTasks(
 		issues = append(issues, refs...)
 	}
 	issues = append(issues, validateUUIDUniqueness(all)...)
-	return append(issues,
-		validateTaskLinks(all)...), nil
+	issues = append(issues, validateReferencePlacement(tasks)...)
+	issues = append(issues, validateTaskLinks(tasks)...)
+	issues = append(issues, validateGraphIntegrity(tasks)...)
+	return normalizeIssues(issues), nil
+}
+
+// validateReferencePlacement checks that source: appears
+// only on parent-list entries and parent: only on the
+// document's primary task.
+func validateReferencePlacement(tasks []*Task) []Issue {
+	var issues []Issue
+	for _, t := range tasks {
+		// Primary task must not have source:.
+		if t.directive != nil &&
+			hasParsedField(t.directive, "source") {
+			field := findField(t.directive, "source")
+			issues = append(issues, Issue{
+				Path:    t.document.path,
+				Line:    field.span.line,
+				Message: "source is not permitted on the document's primary task",
+			})
+		}
+		// Parent-list entries must not have parent:.
+		for i := range t.Subtasks {
+			sub := &t.Subtasks[i]
+			if sub.directive != nil &&
+				hasParsedField(sub.directive, "parent") {
+				field := findField(sub.directive, "parent")
+				issues = append(issues, Issue{
+					Path:    sub.document.path,
+					Line:    field.span.line,
+					Message: "parent is not permitted on a parent-list entry",
+				})
+			}
+		}
+	}
+	return issues
+}
+
+// validateGraphIntegrity checks ownership and cycles across the entire closure,
+// including components without roots. Source entries define ownership; parent
+// references contribute edges too, but do not duplicate reciprocal source edges.
+func validateGraphIntegrity(tasks []*Task) []Issue {
+	type edge struct {
+		target string
+		issue  Issue
+	}
+	graph := make(map[string][]edge)
+	owners := make(map[string][]*Task)
+	seen := make(map[[2]string]bool)
+	addEdge := func(from, to string, t *Task, key string) {
+		pair := [2]string{from, to}
+		if seen[pair] {
+			return
+		}
+		seen[pair] = true
+		graph[from] = append(graph[from], edge{
+			target: to,
+			issue: Issue{
+				Path:    t.document.path,
+				Line:    findField(t.directive, key).span.line,
+				Message: "child-reference cycle involving " + to,
+			},
+		})
+	}
+	for _, t := range tasks {
+		for i := range t.Subtasks {
+			entry := &t.Subtasks[i]
+			if entry.sourceRef != "" {
+				owners[entry.sourceRef] = append(owners[entry.sourceRef], entry)
+				addEdge(t.document.path, entry.sourceRef, entry, "source")
+			}
+		}
+	}
+	for _, t := range tasks {
+		if t.parentRef != "" {
+			addEdge(t.parentRef, t.document.path, t, "parent")
+		}
+	}
+
+	var issues []Issue
+	for _, t := range tasks {
+		for i := range t.Subtasks {
+			entry := &t.Subtasks[i]
+			if len(owners[entry.sourceRef]) > 1 {
+				issues = append(issues, Issue{
+					Path:    t.document.path,
+					Line:    findField(entry.directive, "source").span.line,
+					Message: "multiple owning parents for " + entry.sourceRef,
+				})
+			}
+		}
+	}
+
+	const (
+		unvisited = iota
+		active
+		complete
+	)
+	state := make(map[string]int)
+	var visit func(string)
+	visit = func(path string) {
+		state[path] = active
+		for _, edge := range graph[path] {
+			switch state[edge.target] {
+			case active:
+				issues = append(issues, edge.issue)
+			case unvisited:
+				visit(edge.target)
+			}
+		}
+		state[path] = complete
+	}
+	for _, t := range tasks {
+		if state[t.document.path] == unvisited {
+			visit(t.document.path)
+		}
+	}
+	return issues
+}
+
+// normalizeIssues deduplicates overlapping local/structural findings and orders
+// diagnostics deterministically, including findings at the same location.
+func normalizeIssues(issues []Issue) []Issue {
+	sort.SliceStable(issues, func(i, j int) bool {
+		if issues[i].Path != issues[j].Path {
+			return issues[i].Path < issues[j].Path
+		}
+		if issues[i].Line != issues[j].Line {
+			return issues[i].Line < issues[j].Line
+		}
+		return issues[i].Message < issues[j].Message
+	})
+	seen := make(map[Issue]bool)
+	unique := issues[:0]
+	for _, issue := range issues {
+		if !seen[issue] {
+			seen[issue] = true
+			unique = append(unique, issue)
+		}
+	}
+	return unique
 }
 
 // validateUUIDUniqueness reports repeated usable UUIDs,
@@ -337,8 +469,8 @@ func statusLine(t *Task) int {
 
 // validateTaskLinks reports status mismatches between
 // usable reciprocal task pairs.
-func validateTaskLinks(all []*Task) []Issue {
-	pairs, issues := linkedTaskPairs(all)
+func validateTaskLinks(tasks []*Task) []Issue {
+	pairs, issues := linkedTaskPairs(tasks)
 	for _, pair := range pairs {
 		pt, ct := pair[0], pair[1]
 		pRank, pOK := taskStatusRank(pt)
@@ -360,92 +492,58 @@ func validateTaskLinks(all []*Task) []Issue {
 	return issues
 }
 
-// linkedTaskPairs finds unambiguous reciprocal source/parent
-// pairs and reports broken or ambiguous links.
-func linkedTaskPairs(
-	all []*Task,
-) ([][2]*Task, []Issue) {
-	byDocPath := make(map[string][]*Task)
-	for _, t := range all {
-		byDocPath[t.document.path] = append(
-			byDocPath[t.document.path], t)
+// linkedTaskPairs connects source entries only to a document's primary task,
+// never to another entry. Task types do not determine document ownership.
+func linkedTaskPairs(tasks []*Task) ([][2]*Task, []Issue) {
+	byDocPath := make(map[string]*Task)
+	for _, t := range tasks {
+		byDocPath[t.document.path] = t
 	}
 	var pairs [][2]*Task
 	var issues []Issue
-	for _, t := range all {
-		if t.Type != TypeTask || t.sourceRef == "" {
-			continue
-		}
-		field := findField(t.directive, "source")
-		children := byDocPath[t.sourceRef]
-		if len(children) == 0 {
-			continue
-		}
-		parents := matchingTasks(
-			children, "parent", t.document.path)
-		backlinks := matchingTasks(
-			byDocPath[t.document.path],
-			"source", t.sourceRef)
-		if len(parents) != 1 || len(backlinks) != 1 {
-			issues = append(issues, Issue{
-				t.document.path,
-				field.span.line,
-				fmt.Sprintf(
-					"source %s does not have "+
-						"exactly one reciprocal "+
-						"task parent",
-					field.value),
-				false,
-			})
-		} else {
-			pairs = append(pairs,
-				[2]*Task{t, parents[0]})
+	for _, owner := range tasks {
+		for i := range owner.Subtasks {
+			entry := &owner.Subtasks[i]
+			child := byDocPath[entry.sourceRef]
+			if child == nil {
+				continue // Missing source targets await refinement.
+			}
+			if child.parentRef != owner.document.path ||
+				len(matchingSourceEntries(owner, child.document.path)) != 1 {
+				field := findField(entry.directive, "source")
+				issues = append(issues, Issue{
+					Path:    owner.document.path,
+					Line:    field.span.line,
+					Message: fmt.Sprintf("source %s does not have exactly one reciprocal task parent", field.value),
+				})
+			} else {
+				pairs = append(pairs, [2]*Task{entry, child})
+			}
 		}
 	}
-	for _, t := range all {
-		if t.Type != TypeTask || t.parentRef == "" {
+	for _, child := range tasks {
+		owner := byDocPath[child.parentRef]
+		if owner == nil {
 			continue
 		}
-		field := findField(t.directive, "parent")
-		owner := byDocPath[t.parentRef]
-		if len(owner) == 0 {
-			continue
-		}
-		backlinks := matchingTasks(
-			owner, "source", t.document.path)
-		if len(backlinks) != 1 {
+		if len(matchingSourceEntries(owner, child.document.path)) != 1 {
+			field := findField(child.directive, "parent")
 			issues = append(issues, Issue{
-				t.document.path,
-				field.span.line,
-				fmt.Sprintf(
-					"parent %s does not have "+
-						"exactly one reciprocal "+
-						"task source",
-					field.value),
-				false,
+				Path:    child.document.path,
+				Line:    field.span.line,
+				Message: fmt.Sprintf("parent %s does not have exactly one reciprocal task source", field.value),
 			})
 		}
 	}
 	return pairs, issues
 }
 
-func matchingTasks(
-	tasks []*Task, key, target string,
-) []*Task {
+func matchingSourceEntries(owner *Task, target string) []*Task {
 	var matches []*Task
-	for _, t := range tasks {
-		if t.Type != TypeTask {
-			continue
-		}
-		switch key {
-		case "source":
-			if t.sourceRef == target {
-				matches = append(matches, t)
-			}
-		case "parent":
-			if t.parentRef == target {
-				matches = append(matches, t)
-			}
+	for i := range owner.Subtasks {
+		entry := &owner.Subtasks[i]
+		if entry.sourceRef == target {
+			matches = append(matches, entry)
 		}
 	}
 	return matches
@@ -491,7 +589,7 @@ func (s *Store) repair(
 		}
 	}
 
-	pairs, _ := linkedTaskPairs(all)
+	pairs, _ := linkedTaskPairs(tasks)
 	for _, p := range planStatusPromotions(pairs) {
 		edit, line := p.textEdit()
 		edits[p.task.document] = append(

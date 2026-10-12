@@ -115,7 +115,7 @@ func sectionTask(
 			doc.path, parent.value)
 	}
 	result.Issues = append(result.Issues, issues...)
-	// Type required for task query, not metadata-only.
+	// A heading-adjacent directive must declare the task type.
 	if !hasParsedField(directive, "type") {
 		result.Issues = append(result.Issues, Issue{
 			Path:    doc.path,
@@ -131,8 +131,8 @@ func sectionTask(
 	return result
 }
 
-// directiveFields returns unique, usable fields and local findings on demand.
-// Validation can reuse this for any directive, including metadata-only ones.
+// directiveFields returns unique, usable fields and local findings.
+// Task conversion retains these findings in Task.Issues for validation.
 func directiveFields(path string, parsed *parsedDirective) (map[string]parsedField, []Issue) {
 	fields := make(map[string]parsedField)
 	var issues []Issue
@@ -177,7 +177,7 @@ func directiveFields(path string, parsed *parsedDirective) (map[string]parsedFie
 	return fields, issues
 }
 
-// Shared by task conversion and legacy validation.
+// Local metadata validation used during task conversion.
 // Local conversion never checks reference existence or cross-document semantics.
 func localFieldMessage(key, value string) string {
 	if _, known := knownMetadataFields[key]; !known {

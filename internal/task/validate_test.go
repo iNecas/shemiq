@@ -2,10 +2,195 @@ package task
 
 import (
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/iNecas/shemiq/internal/utils"
 )
+
+// Validate reports structural and hierarchy findings. Headingless documents
+// and missing types are already covered by the command validation tests.
+func TestStoreValidateHierarchyAndStructure(t *testing.T) {
+	for _, tc := range []struct {
+		name, message string
+		files         map[string]string
+		count, line   int
+	}{
+		{
+			name: "missing_directive", message: "missing heading-adjacent task directive", count: 1, line: 1,
+			files: map[string]string{"structure.md": utils.Dedent(`
+				# First
+				Prose prevents adjacency.
+				`)},
+		},
+		{
+			name: "empty_title", message: "empty task title", count: 1, line: 1,
+			files: map[string]string{"empty.md": utils.Dedent(`
+				#
+				:::shemiq
+				type: task
+				uuid: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+				:::
+				`)},
+		},
+		{
+			name: "source_on_primary", message: "source is not permitted", count: 1, line: 4,
+			files: map[string]string{"bad.md": utils.Dedent(`
+				# Title
+				:::shemiq
+				type: task
+				source: ./future.md
+				:::
+				`)},
+		},
+		{
+			name: "parent_on_entry", message: "parent is not permitted", count: 1, line: 11,
+			files: map[string]string{"top.md": utils.Dedent(`
+				# Top
+				:::shemiq
+				type: top-level
+				uuid: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+				:::
+				## Tasks
+				### Entry
+				:::shemiq
+				type: task
+				uuid: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+				parent: ./top.md
+				:::
+				`)},
+		},
+		{
+			// No roots; C -> B must not become a spurious cycle after A <-> B.
+			name: "cycle", message: "child-reference cycle", count: 1, line: 11,
+			files: map[string]string{
+				"a.md": utils.Dedent(`
+					# A
+					:::shemiq
+					type: top-level
+					parent: ./b.md
+					uuid: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+					:::
+					## Tasks
+					### B
+					:::shemiq
+					type: task
+					source: ./b.md
+					:::
+					### C
+					:::shemiq
+					type: task
+					source: ./c.md
+					:::
+					`),
+				"b.md": utils.Dedent(`
+					# B
+					:::shemiq
+					type: task
+					parent: ./a.md
+					uuid: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+					:::
+					## Tasks
+					### A
+					:::shemiq
+					type: task
+					source: ./a.md
+					:::
+					`),
+				"c.md": utils.Dedent(`
+					# C
+					:::shemiq
+					type: task
+					parent: ./a.md
+					uuid: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+					:::
+					## Tasks
+					### B
+					:::shemiq
+					type: task
+					source: ./b.md
+					:::
+					`),
+			},
+		},
+		{
+			name: "multiple_owners", message: "multiple owning parents", count: 2, line: 10,
+			files: map[string]string{
+				"p1.md": utils.Dedent(`
+					# Parent 1
+					:::shemiq
+					type: top-level
+					uuid: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+					:::
+					## Tasks
+					### Child
+					:::shemiq
+					type: task
+					source: ./child.md
+					:::
+					`),
+				"p2.md": utils.Dedent(`
+					# Parent 2
+					:::shemiq
+					type: top-level
+					uuid: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+					:::
+					## Tasks
+					### Child
+					:::shemiq
+					type: task
+					source: ./child.md
+					:::
+					`),
+				"child.md": utils.Dedent(`
+					# Child
+					:::shemiq
+					type: task
+					parent: ./p1.md
+					uuid: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+					:::
+					`),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for path, content := range tc.files {
+				storeFixture(t, root, path, content)
+			}
+			store, err := NewStore(root, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			issues, err := store.Validate(false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			count := 0
+			seen := make(map[Issue]bool)
+			for _, issue := range issues {
+				if seen[issue] {
+					t.Fatalf("duplicate diagnostic: %+v", issue)
+				}
+				seen[issue] = true
+				if strings.Contains(issue.Message, tc.message) {
+					count++
+					if issue.Line != tc.line || issue.Fixed {
+						t.Fatalf("incorrect finding location or repair: %+v", issue)
+					}
+				}
+			}
+			if count != tc.count {
+				t.Fatalf("expected %d %q findings, got %+v", tc.count, tc.message, issues)
+			}
+			again, err := store.Validate(false)
+			if err != nil || !reflect.DeepEqual(issues, again) {
+				t.Fatalf("non-deterministic validation: %+v, %v", again, err)
+			}
+		})
+	}
+}
 
 // Validation repairs refresh the store's snapshots so later
 // task queries observe promoted status, while references
