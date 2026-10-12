@@ -8,6 +8,7 @@ uuid: 3eeae0fa-d14b-46c5-a015-70011f3d1564
 
 ## Context
 
+- Naming handoff: the parent now specifies `shemiq tree [dir]` with human-readable output and `--json`. `./reconsider-naming.md` supersedes the original `Store.Dump()`/`Dump*`/`dump.go` names with `Store.Tree()`/`Tree*`/`tree.go`, without changing this completed task's behavior. The original plan and implementation history below are retained; command and generation work remain separate sibling tasks.
 - Provide the read-only store operation and Go JSON contract consumed by the dump command and TypeScript-generation sibling tasks.
 - `internal/task/store.go` owns scope resolution, parsed snapshots, resolved paths, and cached documents.
 - `internal/task/task.go` contains task metadata, structural/local issues, and private UUID/source/parent fields.

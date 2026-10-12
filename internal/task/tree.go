@@ -1,76 +1,81 @@
 package task
 
+// This file builds the validated, merged task hierarchy and defines its public
+// JSON contract. Unlike the parser-oriented Task model in task.go, Tree* types
+// expose only integration-facing metadata, keeping JSON and generated TypeScript
+// types independent of parsing details and internal validation state.
+
 import (
 	"fmt"
 	"sort"
 	"strings"
 )
 
-// DumpTaskType is the exported task type for the JSON contract.
-type DumpTaskType string
+// TreeTaskType is the exported task type for the JSON contract.
+type TreeTaskType string
 
 const (
-	DumpTypeTopLevel DumpTaskType = "top-level"
-	DumpTypeTask     DumpTaskType = "task"
+	TreeTypeTopLevel TreeTaskType = "top-level"
+	TreeTypeTask     TreeTaskType = "task"
 )
 
-// DumpStatus is the exported task status for the JSON contract.
-type DumpStatus string
+// TreeStatus is the exported task status for the JSON contract.
+type TreeStatus string
 
 const (
-	DumpStatusNew     DumpStatus = "new"
-	DumpStatusRefined DumpStatus = "refined"
-	DumpStatusDone    DumpStatus = "done"
+	TreeStatusNew     TreeStatus = "new"
+	TreeStatusRefined TreeStatus = "refined"
+	TreeStatusDone    TreeStatus = "done"
 )
 
-// DumpDocument is the top-level JSON export container.
-type DumpDocument struct {
-	Tasks []DumpNode `json:"tasks"`
+// TreeDocument is the top-level JSON tree container.
+type TreeDocument struct {
+	Tasks []TreeNode `json:"tasks"`
 }
 
-// DumpNode represents one task in the merged export tree.
-type DumpNode struct {
-	Type        DumpTaskType `json:"type"`
+// TreeNode represents one task in the merged tree.
+type TreeNode struct {
+	Type        TreeTaskType `json:"type"`
 	Title       string       `json:"title"`
-	Status      DumpStatus   `json:"status"`
+	Status      TreeStatus   `json:"status"`
 	ProjectRoot string       `json:"projectRoot"`
 	Path        string       `json:"path,omitempty"`
 	UUID        string       `json:"uuid,omitempty"`
-	Subtasks    []DumpNode   `json:"subtasks"`
+	Subtasks    []TreeNode   `json:"subtasks"`
 }
 
-// ValidationError carries located semantic findings that prevent a dump.
+// ValidationError carries located semantic findings that prevent tree construction.
 type ValidationError struct {
 	Issues []Issue
 }
 
-// Dump performs a read-only, fully validated export of the
-// merged task tree reachable from the store's configured
-// directory scope. File scopes are rejected.
-func (s *Store) Dump() (DumpDocument, error) {
+// Tree returns the read-only, fully validated merged task tree
+// reachable from the store's configured directory scope.
+// File scopes are rejected.
+func (s *Store) Tree() (TreeDocument, error) {
 	if err := s.load(); err != nil {
-		return DumpDocument{}, err
+		return TreeDocument{}, err
 	}
 	if !s.scope.directory {
-		return DumpDocument{}, fmt.Errorf(
-			"dump requires a directory scope, not a file: %s",
+		return TreeDocument{}, fmt.Errorf(
+			"tree requires a directory scope, not a file: %s",
 			s.scope.path)
 	}
 
 	tasks, err := s.reachableTasks()
 	if err != nil {
-		return DumpDocument{}, err
+		return TreeDocument{}, err
 	}
 
 	issues, err := s.validateAllTasks(tasks)
 	if err != nil {
-		return DumpDocument{}, err
+		return TreeDocument{}, err
 	}
 	if err := validationIssuesToError(issues); err != nil {
-		return DumpDocument{}, err
+		return TreeDocument{}, err
 	}
 
-	return buildDumpDocument(tasks), nil
+	return buildTreeDocument(tasks), nil
 }
 
 func (e *ValidationError) Error() string {
@@ -87,7 +92,7 @@ func (e *ValidationError) Error() string {
 	return b.String()
 }
 
-// validationIssuesToError converts semantic findings into a dump failure.
+// validationIssuesToError converts semantic findings into a tree failure.
 func validationIssuesToError(issues []Issue) error {
 	if len(issues) > 0 {
 		return &ValidationError{Issues: issues}
@@ -95,9 +100,9 @@ func validationIssuesToError(issues []Issue) error {
 	return nil
 }
 
-// buildDumpDocument constructs the merged export tree from
+// buildTreeDocument constructs the merged tree from
 // validated, reached tasks.
-func buildDumpDocument(tasks []*Task) DumpDocument {
+func buildTreeDocument(tasks []*Task) TreeDocument {
 	// Index tasks by their document path for lookup.
 	byDocPath := make(map[string]*Task)
 	for _, t := range tasks {
@@ -116,20 +121,20 @@ func buildDumpDocument(tasks []*Task) DumpDocument {
 	}
 
 	// Build nodes recursively.
-	var buildNode func(entry *Task, definingDoc *Task) DumpNode
-	buildNode = func(entry *Task, definingDoc *Task) DumpNode {
+	var buildNode func(entry *Task, definingDoc *Task) TreeNode
+	buildNode = func(entry *Task, definingDoc *Task) TreeNode {
 		// Check if the source target exists as a loaded document.
 		if entry.sourceRef != "" {
 			if child, ok := byDocPath[entry.sourceRef]; ok {
 				// Use the child document's authoritative metadata.
-				node := DumpNode{
-					Type:        toDumpType(child.Type),
+				node := TreeNode{
+					Type:        toTreeType(child.Type),
 					Title:       child.Title,
-					Status:      toDumpStatus(child.Status),
+					Status:      toTreeStatus(child.Status),
 					ProjectRoot: child.ProjectRoot,
 					Path:        child.document.path,
 					UUID:        child.uuid,
-					Subtasks:    make([]DumpNode, 0),
+					Subtasks:    make([]TreeNode, 0),
 				}
 				// Recursively merge child's subtasks.
 				for i := range child.Subtasks {
@@ -139,23 +144,23 @@ func buildDumpDocument(tasks []*Task) DumpDocument {
 				return node
 			}
 			// Missing source target: retain entry metadata.
-			node := DumpNode{
-				Type:        toDumpType(entry.Type),
+			node := TreeNode{
+				Type:        toTreeType(entry.Type),
 				Title:       entry.Title,
-				Status:      toDumpStatus(entry.Status),
+				Status:      toTreeStatus(entry.Status),
 				ProjectRoot: definingDoc.ProjectRoot,
 				Path:        entry.sourceRef,
-				Subtasks:    make([]DumpNode, 0),
+				Subtasks:    make([]TreeNode, 0),
 			}
 			return node
 		}
 		// Inline entry (no source): retain metadata, omit path.
-		node := DumpNode{
-			Type:        toDumpType(entry.Type),
+		node := TreeNode{
+			Type:        toTreeType(entry.Type),
 			Title:       entry.Title,
-			Status:      toDumpStatus(entry.Status),
+			Status:      toTreeStatus(entry.Status),
 			ProjectRoot: definingDoc.ProjectRoot,
-			Subtasks:    make([]DumpNode, 0),
+			Subtasks:    make([]TreeNode, 0),
 		}
 		if entry.uuid != "" {
 			node.UUID = entry.uuid
@@ -164,7 +169,7 @@ func buildDumpDocument(tasks []*Task) DumpDocument {
 	}
 
 	// Roots: every reached document not owned by another.
-	var roots []DumpNode
+	var roots []TreeNode
 	var rootPaths []string
 	for _, t := range tasks {
 		if !owned[t.document.path] {
@@ -181,14 +186,14 @@ func buildDumpDocument(tasks []*Task) DumpDocument {
 		}
 		seen[p] = true
 		t := byDocPath[p]
-		node := DumpNode{
-			Type:        toDumpType(t.Type),
+		node := TreeNode{
+			Type:        toTreeType(t.Type),
 			Title:       t.Title,
-			Status:      toDumpStatus(t.Status),
+			Status:      toTreeStatus(t.Status),
 			ProjectRoot: t.ProjectRoot,
 			Path:        t.document.path,
 			UUID:        t.uuid,
-			Subtasks:    make([]DumpNode, 0),
+			Subtasks:    make([]TreeNode, 0),
 		}
 		for i := range t.Subtasks {
 			node.Subtasks = append(node.Subtasks,
@@ -198,31 +203,31 @@ func buildDumpDocument(tasks []*Task) DumpDocument {
 	}
 
 	if roots == nil {
-		roots = make([]DumpNode, 0)
+		roots = make([]TreeNode, 0)
 	}
-	return DumpDocument{Tasks: roots}
+	return TreeDocument{Tasks: roots}
 }
 
-func toDumpType(t TaskType) DumpTaskType {
+func toTreeType(t TaskType) TreeTaskType {
 	switch t {
 	case TypeTopLevel:
-		return DumpTypeTopLevel
+		return TreeTypeTopLevel
 	case TypeTask:
-		return DumpTypeTask
+		return TreeTypeTask
 	default:
-		return DumpTaskType(t)
+		return TreeTaskType(t)
 	}
 }
 
-func toDumpStatus(s string) DumpStatus {
+func toTreeStatus(s string) TreeStatus {
 	switch s {
 	case "new":
-		return DumpStatusNew
+		return TreeStatusNew
 	case "refined":
-		return DumpStatusRefined
+		return TreeStatusRefined
 	case "done":
-		return DumpStatusDone
+		return TreeStatusDone
 	default:
-		return DumpStatus(s)
+		return TreeStatus(s)
 	}
 }

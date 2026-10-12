@@ -12,12 +12,12 @@ import (
 	"github.com/iNecas/shemiq/internal/utils"
 )
 
-// TestStoreDumpMergedTree covers the representative success
+// TestStoreTreeMergedTree covers the representative success
 // scenario: authoritative child metadata, missing-source and
 // inline children, external references via parent, ordering,
 // root deduplication, and child-directory selection recovering
 // ancestors.
-func TestStoreDumpMergedTree(t *testing.T) {
+func TestStoreTreeMergedTree(t *testing.T) {
 	root := t.TempDir()
 	active := filepath.Join(root, ".shemiq", "tasks")
 
@@ -91,9 +91,9 @@ func TestStoreDumpMergedTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Dump()
+	doc, err := store.Tree()
 	if err != nil {
-		t.Fatalf("dump: %v", err)
+		t.Fatalf("tree: %v", err)
 	}
 
 	// Verify JSON serialization.
@@ -101,7 +101,7 @@ func TestStoreDumpMergedTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var roundtrip DumpDocument
+	var roundtrip TreeDocument
 	if err := json.Unmarshal(data, &roundtrip); err != nil {
 		t.Fatal(err)
 	}
@@ -116,8 +116,8 @@ func TestStoreDumpMergedTree(t *testing.T) {
 
 	top := doc.Tasks[0]
 	if top.Title != "Example" ||
-		top.Type != DumpTypeTopLevel ||
-		top.Status != DumpStatusRefined ||
+		top.Type != TreeTypeTopLevel ||
+		top.Status != TreeStatusRefined ||
 		top.UUID != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" ||
 		top.ProjectRoot != root {
 		t.Fatalf("unexpected root: %+v", top)
@@ -131,7 +131,7 @@ func TestStoreDumpMergedTree(t *testing.T) {
 	child := top.Subtasks[0]
 	if child.Title != "Authoritative title" ||
 		child.UUID != "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" ||
-		child.Status != DumpStatusRefined {
+		child.Status != TreeStatusRefined {
 		t.Fatalf("child not authoritative: %+v", child)
 	}
 	if len(child.Subtasks) != 1 ||
@@ -143,7 +143,7 @@ func TestStoreDumpMergedTree(t *testing.T) {
 	// Second subtask: missing source, entry metadata retained.
 	missing := top.Subtasks[1]
 	if missing.Title != "Not yet created" ||
-		missing.Status != DumpStatusNew ||
+		missing.Status != TreeStatusNew ||
 		missing.UUID != "" {
 		t.Fatalf("missing-source entry: %+v", missing)
 	}
@@ -177,9 +177,9 @@ func TestStoreDumpMergedTree(t *testing.T) {
 	}
 }
 
-// TestStoreDumpEmptyDirectory checks that a valid empty
+// TestStoreTreeEmptyDirectory checks that a valid empty
 // directory returns { "tasks": [] }.
-func TestStoreDumpEmptyDirectory(t *testing.T) {
+func TestStoreTreeEmptyDirectory(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "empty")
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -189,9 +189,9 @@ func TestStoreDumpEmptyDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Dump()
+	doc, err := store.Tree()
 	if err != nil {
-		t.Fatalf("dump: %v", err)
+		t.Fatalf("tree: %v", err)
 	}
 	data, err := json.Marshal(doc)
 	if err != nil {
@@ -202,8 +202,8 @@ func TestStoreDumpEmptyDirectory(t *testing.T) {
 	}
 }
 
-// TestStoreDumpRejectsFileScope ensures file scopes fail.
-func TestStoreDumpRejectsFileScope(t *testing.T) {
+// TestStoreTreeRejectsFileScope ensures file scopes fail.
+func TestStoreTreeRejectsFileScope(t *testing.T) {
 	root := t.TempDir()
 	f := storeFixture(t, root, "single.md",
 		utils.Dedent(`
@@ -217,14 +217,14 @@ func TestStoreDumpRejectsFileScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Dump(); err == nil {
+	if _, err := store.Tree(); err == nil {
 		t.Fatal("expected error for file scope")
 	}
 }
 
-// Dump must run full validation over the reached closure before constructing
-// any export, return located findings, and leave the original files untouched.
-func TestStoreDumpRunsFullValidation(t *testing.T) {
+// Tree must run full validation over the reached closure before constructing
+// any tree, return located findings, and leave the original files untouched.
+func TestStoreTreeRunsFullValidation(t *testing.T) {
 	root := t.TempDir()
 	parent := storeFixture(t, root, "selected/top.md", utils.Dedent(`
 		# Parent
@@ -261,12 +261,12 @@ func TestStoreDumpRunsFullValidation(t *testing.T) {
 	if err != nil || len(issues) == 0 {
 		t.Fatalf("expected validation findings in the fixture: %+v, %v", issues, err)
 	}
-	doc, err := store.Dump()
+	doc, err := store.Tree()
 	var ve *ValidationError
 	if !errors.As(err, &ve) || !reflect.DeepEqual(issues, ve.Issues) {
-		t.Fatalf("dump did not return the same validation findings: doc=%+v err=%v", doc, err)
+		t.Fatalf("tree did not return the same validation findings: doc=%+v err=%v", doc, err)
 	}
-	if !reflect.DeepEqual(doc, DumpDocument{}) {
+	if !reflect.DeepEqual(doc, TreeDocument{}) {
 		t.Fatalf("validation failure returned a usable document: %+v", doc)
 	}
 	for _, issue := range ve.Issues {
@@ -277,15 +277,15 @@ func TestStoreDumpRunsFullValidation(t *testing.T) {
 	for path, original := range before {
 		after, err := os.ReadFile(path)
 		if err != nil || string(after) != string(original) {
-			t.Fatalf("dump changed %s: %v", path, err)
+			t.Fatalf("tree changed %s: %v", path, err)
 		}
 	}
 }
 
-// TestStoreDumpChildScopeRecoversAncestor verifies that
+// TestStoreTreeChildScopeRecoversAncestor verifies that
 // scoping to a child directory recovers the ancestor and
 // its sibling branches through parent: references.
-func TestStoreDumpChildScopeRecoversAncestor(t *testing.T) {
+func TestStoreTreeChildScopeRecoversAncestor(t *testing.T) {
 	root := t.TempDir()
 	active := filepath.Join(root, ".shemiq", "tasks")
 
@@ -343,9 +343,9 @@ func TestStoreDumpChildScopeRecoversAncestor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Dump()
+	doc, err := store.Tree()
 	if err != nil {
-		t.Fatalf("dump: %v", err)
+		t.Fatalf("tree: %v", err)
 	}
 
 	// Should have one root (parent), with two children.
