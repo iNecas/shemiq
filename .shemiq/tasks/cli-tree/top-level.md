@@ -2,7 +2,7 @@
 :::shemiq
 type: top-level
 uuid: 319b7f05-6a7f-4ad8-acf8-cbdd446dbf58
-status: refined
+status: done
 :::
 
 ## Description
@@ -17,13 +17,13 @@ status: refined
 
 - `internal/task/store.go` provides lazy, directory-scoped loading of Markdown task documents and caches parsed snapshots; existing queries do not follow metadata references or merge parent entries with child documents.
 - `internal/task/task.go` contains task metadata, embedded parent-list entries, and located structural/local issues; UUIDs and resolved references are currently private.
-- The completed store-export and naming subtasks provide `Store.Tree()` and `Tree*` DTOs in `internal/task/tree.go`; the store-export document retains the original naming as implementation history.
+- The completed store-export and naming subtasks provide `Store.Tree()` in `internal/task/tree.go`; type generation moved `Tree*` DTOs to `internal/task/tree_types.go`. The store-export document retains the original naming as implementation history.
 - `internal/task/validate.go` provides read-only validation and optional repairs, follows source/parent references, and checks UUID uniqueness, reciprocal links, and linked statuses; the shared tree operation also rejects structural task issues.
 - Missing subtask source files are allowed under existing validation rules, supporting subtasks that have not yet been refined into separate documents.
 - Parent-list titles can differ from child-document titles without failing existing validation; the tree uses child-document metadata when the file exists.
 - `cmd/root.go` registers Cobra commands and separates result output from diagnostics; the tree command follows that pattern.
 - `cmd/refine.go` and `cmd/implement.go` retain workflow eligibility and routing; the tree does not expose available actions.
-- The project currently has no JSON CLI command or TypeScript generation tooling; command-level tests can reuse the existing command harness, and `Makefile` provides Go test/vet checks.
+- `cmd/tree.go` provides human and JSON output; `Makefile` checks Go tests/vet and generated TypeScript drift.
 
 ## Interview
 
@@ -96,9 +96,10 @@ status: refined
 - Do not include Markdown, available actions, validation issues, or a schema-version field.
 - Renaming Go/TypeScript identifiers does not change JSON keys, field types, or wire behavior.
 - Use Go DTOs and their JSON tags as the source of truth for TypeScript generation, with independent named string types/constants yielding literal unions for task types and statuses.
-- Configure Tygo to select the contract declarations in `internal/task/tree.go`, not the internal task/parser model; run a pinned version through `go run` and expose generation through `make generate-types`.
-- Commit the generated TypeScript artifact using the same `Tree*` names so consumers do not need to run generation.
-- Add a regeneration drift check and generation documentation; no Node/npm tooling or globally installed generator is required.
+- Move contract declarations to `internal/task/tree_types.go` within package `task`, leaving tree construction and `ValidationError` in `tree.go`. Rename `TreeTypeTopLevel` / `TreeTypeTask` to `TreeTaskTypeTopLevel` / `TreeTaskTypeTask` so Tygo recognizes the task-type union; preserve JSON and CLI behavior without compatibility aliases.
+- Configure root-level `tygo.yaml` to include only `tree_types.go` and use union generation; register Tygo `v0.2.21` as a tool dependency in `go.mod`, invoke it through `go tool tygo`, and expose generation through `make generate-types`.
+- Commit the generated TypeScript artifact at `extensions/shemiq/types.ts` using the same `Tree*` type names so the future Pi extension can import from `./types`; do not create the extension entry point or a package manifest in this task.
+- Add non-mutating temporary-output drift checking through `make check-types`, included in `make check`, and generation documentation in `DEV.md`; no Node/npm tooling or globally installed generator is required.
 - Keep DTO types compatible with Tygo rather than accepting unsupported types silently becoming `any`; generation provides compile-time types, not runtime validators.
 
 ### Error handling
@@ -128,7 +129,10 @@ status: refined
 
 ## Current status
 
-- Store-export, naming, and command subtasks are complete; TypeScript generation remains `new`.
+- All four subtasks are complete; the CLI tree and generated TypeScript contract are ready for future integrations.
+- Contract declarations live in `internal/task/tree_types.go`; task-type constants now use the `TreeTaskType` prefix for literal-union generation. Completed sibling behavior and the JSON contract remain unchanged.
+- Root `tygo.yaml` selects only the contract file; Tygo `v0.2.21` is managed in `go.mod`/`go.sum` as a tool dependency. `make generate-types` invokes `go tool tygo` to generate `extensions/shemiq/types.ts`. No Pi entry point or package manifest added.
+- `make check-types` regenerates into temporary output without touching the artifact; both generation/check targets reject unsupported fallback markers and `any`. Workflow and first-run downloads documented in `DEV.md`.
 - `shemiq tree [dir]` implemented in `cmd/tree.go`, registered in `cmd/root.go`.
 - Human rendering in `internal/console/tree.go`; color utilities in `internal/console/color.go`.
 - JSON serialization uses `json.MarshalIndent` in the command; both modes share the same `Store.Tree()` model.
@@ -137,7 +141,9 @@ status: refined
 - Tests cover both output modes, empty directories, validation errors, file rejection, and missing directories.
 - Console tests cover status colors, ANSI resets, and color disabling for non-terminals.
 - Usage documented in `README.md` (step 5) and `skills/shemiq/SKILL.md`.
-- All tests pass: `go test ./...` and `go vet ./...`.
+- One compact Go test checks generated unions, required arrays, optional fields, and exclusion of internal declarations.
+- End-to-end generation checks cover success, stale/missing artifacts without rewriting, generator failure, fallback/`any` rejection, and temporary cleanup.
+- Full `make check` passes: Go tests, vet, and generated-type drift checking.
 
 ## Tasks
 
@@ -177,10 +183,10 @@ Add `shemiq tree [dir]` with a human-readable title/status tree by default and `
 :::shemiq
 type: task
 source: ./generate-typescript-tree-types.md
-status: new
+status: done
 :::
 
 Configure pinned Tygo generation, commit the generated TypeScript contract, and add the generation target, drift check, and developer documentation.
 
-- Store handoff ready: select `Tree*` DTO/type/constant declarations in `internal/task/tree.go`, preserving literal unions; exclude `ValidationError` and the internal task/parser model.
-- The generated type names follow the tree naming; the JSON shape and generation approach remain unchanged.
+- Completed: moved `Tree*` DTO/type/constant declarations from `internal/task/tree.go` to `internal/task/tree_types.go` and aligned the two task-type constant prefixes for literal unions; excluded `ValidationError` and the internal task/parser model.
+- The generated type names follow the tree naming; the JSON shape and pinned Tygo generation approach remain unchanged. Output lives at `extensions/shemiq/types.ts`; `make check` includes non-mutating drift checking.

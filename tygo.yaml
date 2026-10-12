@@ -1,0 +1,9 @@
+# Go declarations and JSON tags are the source of truth; do not include tree.go
+# or the parser/validation model in the integration contract.
+packages:
+  - path: github.com/iNecas/shemiq/internal/task
+    output_path: extensions/shemiq/types.ts
+    include_files:
+      - tree_types.go
+    enum_style: union
+    fallback_type: __SHEMIQ_UNSUPPORTED_TYPE__

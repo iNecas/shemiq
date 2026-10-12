@@ -116,7 +116,7 @@ func TestStoreTreeMergedTree(t *testing.T) {
 
 	top := doc.Tasks[0]
 	if top.Title != "Example" ||
-		top.Type != TreeTypeTopLevel ||
+		top.Type != TreeTaskTypeTopLevel ||
 		top.Status != TreeStatusRefined ||
 		top.UUID != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" ||
 		top.ProjectRoot != root {

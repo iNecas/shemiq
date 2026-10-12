@@ -1,48 +1,13 @@
 package task
 
-// This file builds the validated, merged task hierarchy and defines its public
-// JSON contract. Unlike the parser-oriented Task model in task.go, Tree* types
-// expose only integration-facing metadata, keeping JSON and generated TypeScript
-// types independent of parsing details and internal validation state.
+// This file builds the validated, merged task hierarchy. Its integration-facing
+// JSON contract is defined separately in tree_types.go.
 
 import (
 	"fmt"
 	"sort"
 	"strings"
 )
-
-// TreeTaskType is the exported task type for the JSON contract.
-type TreeTaskType string
-
-const (
-	TreeTypeTopLevel TreeTaskType = "top-level"
-	TreeTypeTask     TreeTaskType = "task"
-)
-
-// TreeStatus is the exported task status for the JSON contract.
-type TreeStatus string
-
-const (
-	TreeStatusNew     TreeStatus = "new"
-	TreeStatusRefined TreeStatus = "refined"
-	TreeStatusDone    TreeStatus = "done"
-)
-
-// TreeDocument is the top-level JSON tree container.
-type TreeDocument struct {
-	Tasks []TreeNode `json:"tasks"`
-}
-
-// TreeNode represents one task in the merged tree.
-type TreeNode struct {
-	Type        TreeTaskType `json:"type"`
-	Title       string       `json:"title"`
-	Status      TreeStatus   `json:"status"`
-	ProjectRoot string       `json:"projectRoot"`
-	Path        string       `json:"path,omitempty"`
-	UUID        string       `json:"uuid,omitempty"`
-	Subtasks    []TreeNode   `json:"subtasks"`
-}
 
 // ValidationError carries located semantic findings that prevent tree construction.
 type ValidationError struct {
@@ -211,9 +176,9 @@ func buildTreeDocument(tasks []*Task) TreeDocument {
 func toTreeType(t TaskType) TreeTaskType {
 	switch t {
 	case TypeTopLevel:
-		return TreeTypeTopLevel
+		return TreeTaskTypeTopLevel
 	case TypeTask:
-		return TreeTypeTask
+		return TreeTaskTypeTask
 	default:
 		return TreeTaskType(t)
 	}
