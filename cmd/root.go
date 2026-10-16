@@ -34,6 +34,7 @@ func newRootCommand(result io.Writer, launcher agent.Launcher) *cobra.Command {
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.AddCommand(
 		newNewCommand(result),
+		newNewSubtaskCommand(result),
 		newValidateCommand(),
 		newArchiveCommand(result),
 		newRefineCommand(result, launcher),

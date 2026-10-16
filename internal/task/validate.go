@@ -1,7 +1,6 @@
 package task
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -549,11 +548,6 @@ func matchingSourceEntries(owner *Task, target string) []*Task {
 	return matches
 }
 
-type textEdit struct {
-	start, end int
-	text       string
-}
-
 // repair plans targeted edits against original-byte
 // snapshots, writes them per document, and refreshes
 // affected tasks.
@@ -603,7 +597,7 @@ func (s *Store) repair(
 	}
 
 	for doc, documentEdits := range edits {
-		if err := applyEdits(doc, documentEdits); err != nil {
+		if err := applyEdits(doc, documentEdits, doc.path); err != nil {
 			return nil, err
 		}
 	}
@@ -696,27 +690,4 @@ func planStatusPromotions(
 		}
 	}
 	return promotions
-}
-
-// applyEdits rewrites a document from its original snapshot.
-func applyEdits(
-	doc *parsedDocument, edits []textEdit,
-) error {
-	sort.SliceStable(edits, func(i, j int) bool {
-		return edits[i].start < edits[j].start
-	})
-	var output bytes.Buffer
-	start := 0
-	for _, edit := range edits {
-		output.Write(doc.data[start:edit.start])
-		output.WriteString(edit.text)
-		start = edit.end
-	}
-	output.Write(doc.data[start:])
-	if err := os.WriteFile(
-		doc.path, output.Bytes(), 0644); err != nil {
-		return fmt.Errorf(
-			"repair %s: %w", doc.path, err)
-	}
-	return nil
 }

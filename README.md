@@ -59,7 +59,7 @@ At some point, there might be releases and packaging, let's keep it personal for
   
 ## Usage
 
-**1. Create new top-level task**
+**Create new top-level task**
 
 Create a top-level task with short description of your intent in `.shemiq/tasks/$MY_TASK/top-level.md`, or just use the predefined prompt.
 
@@ -67,7 +67,7 @@ Create a top-level task with short description of your intent in `.shemiq/tasks/
 /shemiq-new a task I would like to work on
 ```
 
-**2. Refine and split the top-level task**
+**Refine and split the top-level task**
 
 Provide more description and intial context in the `top-level.md` file and initiate
 the refinement process:
@@ -86,7 +86,19 @@ it to reasonably sized chunks suitable for iterative development.
 At the end of this phase, everything is still contained in the single `top-level.md` file,
 with short descriptions of each sub-task.
 
-**3 a. Refine a sub-task**
+**Add a sub-task**
+
+Add a sub-task to an existing top-level task from the terminal:
+
+```sh
+shemiq new-subtask .shemiq/tasks/$MY_TASK --title "Subtask name" "What needs to be done"
+```
+
+You can also pass the `top-level.md` file directly. Omit `--title` to be prompted
+for the name. Sub-tasks are appended by default; use `--after "Existing subtask"`
+to insert after an exact title match.
+
+**Refine a sub-task**
 
 Refining a sub-task will create a separate task file in the same directory with design
 and implementation details for the specific task. Unlike `top-level.md` that's intended
@@ -100,7 +112,7 @@ to the particular sub-task.
 Or use `shemiq refine .shemiq/tasks/$MY_TASK --subtask "subtask name"` from a terminal.
 Interactive `shemiq refine` variant lets you choose the sub-tasks from refined top-level tasks.
 
-**4. Implement the refined sub-task**
+**Implement the refined sub-task**
 
 ```
 /shemiq-implement-task .shemiq/tasks/$MY_TASK/$SUB_TASK.md
@@ -120,7 +132,7 @@ shemiq implement .shemiq/tasks/$MY_TASK/$SUB_TASK.md     # direct file
 Refined subtasks launch `/shemiq-implement-task`; new subtasks launch
 `/shemiq-implement-task-parent`.
 
-**3 b. Implement a sub-task immediately**
+**Implement a sub-task immediately (without refinement)**
 
 If a sub-task is straight forward, all the important information has already been
 gathered during top-level refinement and you feel lucky, one can trigger the implementation immediately
@@ -132,7 +144,7 @@ without sub-task refinement.
 
 This should still produce the separate sub-task file at the end of the implementation.
 
-**5. View the task hierarchy**
+**View the task hierarchy**
 
 Display a human-readable tree of all tasks and their statuses:
 
@@ -142,7 +154,7 @@ shemiq tree .shemiq/tasks/my-feature     # explicit directory scope
 shemiq tree --json                       # machine-readable JSON output
 ```
 
-**6. Archive a top-level task when done**
+**Archive a top-level task when done**
 
 Run `shemiq archive` to choose a task interactively, or provide an explicit path:
 
