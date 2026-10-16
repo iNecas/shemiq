@@ -11,9 +11,11 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { openBrowser } from "./browser.ts";
+import { openBrowser, registerActionHandler } from "./browser.ts";
+import { registerWorkflowHandlers } from "./workflows.ts";
 
 export default function shemiqExtension(pi: ExtensionAPI) {
+  registerWorkflowHandlers(pi, registerActionHandler);
   pi.registerCommand("shemiq", {
     description: "Open the Shemiq task browser",
     handler: async (_args, ctx) => {

@@ -34,7 +34,7 @@ status: refined
 - Always create tasks in the current session after collecting a multiline description.
 - Archive immediately without confirmation, keep the browser open, and refresh afterward.
 - Keep the small amount of eligibility and prompt routing in the extension rather than adding a CLI routing API.
-- Reload on open, support manual refresh, and recheck task existence and eligibility before actions; do not add background watchers.
+- Reload on open and support manual refresh; workflow refinement drops automatic pre-action reloads and additional task-validity checks in favor of launching from the displayed snapshot. Do not add background watchers.
 - Keep a recovery screen on loading errors, with Refresh, New task, and Close; do not automatically repair metadata or install tools.
 - Require Pi to be idle before opening the browser; do not interrupt or queue a delayed opening.
 - Browser subtask refinement supersedes the original read-only policy: show external references with the same actions as local tasks, subject to normal eligibility and existing CLI restrictions; keep Pi's working directory unchanged.
@@ -80,9 +80,8 @@ status: refined
 ### Data flow and refresh
 
 - Load the hierarchy through `shemiq tree --json` whenever the browser opens.
-- Provide manual refresh and reload again before acting on a selected task; verify that it still exists and remains eligible.
-- If the selection disappeared or became ineligible, refresh the view and explain why the action was not launched.
-- Never silently act on another row or dispatch using stale metadata.
+- Provide manual refresh; launch actions from the displayed selection using the existing shared eligibility policy, without automatic pre-action reloads or additional task-validity checks.
+- Never silently substitute another row for the selected task. Changes made outside the browser become visible on manual refresh or reopening.
 - Refresh after archiving so the displayed hierarchy reflects the operation.
 
 ### Error handling
@@ -92,7 +91,7 @@ status: refined
 - Report missing CLI, invalid metadata, and unreadable files with actionable messages rather than presenting failures as a successfully loaded empty hierarchy.
 - The extension does not automatically install tools, repair metadata, or modify task documents itself; existing prompts retain their established responsibilities.
 - Check launch prerequisites before replacing the current session where possible.
-- If fresh-session creation is cancelled or fails, do not fall back to dispatching the prompt into the old session.
+- If fresh-session creation is cancelled or fails, leave the browser closed and report it; do not automatically reopen or fall back to dispatching the prompt into the old session.
 - Report archive failures without claiming success or removing the task from the displayed hierarchy; refresh before another attempt, using the recovery screen if reloading fails.
 
 ### Testing and documentation
@@ -109,7 +108,11 @@ status: refined
 - `/shemiq` command and `Alt+S` shortcut open a full custom screen with hierarchy, keyboard navigation, action legend, and refresh.
 - Eligibility rules and action handler hooks are in place; unconnected actions report "not implemented yet".
 - `registerActionHandler()` in `browser.ts` is the integration point for the remaining four subtasks.
-- The remaining subtasks (connect-refinement, add-creation, add-archiving, verify-and-document) are still new.
+- The workflow connection subtask is implemented and done (`extensions/shemiq/workflows.ts`).
+- Refine (r/R) and implement (i/I) browser actions now route to the four existing prompt templates with proper argument quoting.
+- Fresh sessions (r/i) use `ctx.newSession()` + `withSession`; current sessions (R/I) use `pi.sendUserMessage()`.
+- Missing template detection keeps the browser open with an actionable error.
+- Creation, archiving, and verification/documentation remain new.
 
 ## Tasks
 
@@ -126,12 +129,12 @@ Provide idle-only entry, the fully expanded hierarchy, keyboard navigation and a
 :::shemiq
 type: task
 source: ./connect-refinement-and-implementation.md
-status: new
+status: done
 :::
 
-Apply existing workflow eligibility and prompt routing, with fresh sessions by default, alternate current-session bindings, and pre-action rechecks.
+Apply existing workflow eligibility and prompt routing from the displayed snapshot, with fresh sessions by default and alternate current-session bindings.
 
-- Integration note: reuse the browser task's shared eligibility, action hooks, reload-and-resolve helper, and command-capable entry path.
+- Integration note: reuse the browser task's shared eligibility, action hooks, and command-capable entry path; automatic pre-action reloads and a reload-and-resolve helper are no longer required.
 
 ### Add task creation
 :::shemiq
@@ -142,7 +145,7 @@ status: new
 
 Collect a multiline description and start the existing creation prompt in the current session, returning to the browser if description entry is cancelled.
 
-- Integration note: connect the browser's New task hook, replacing its placeholder, and reuse its return/close behavior.
+- Integration note: connect the browser's New task hook, replacing its placeholder, and reuse its return/close behavior; the workflow task's current-session dispatch boundary should be reusable.
 
 ### Add immediate archiving
 :::shemiq
@@ -164,7 +167,7 @@ status: new
 
 Add lightweight automated workflow checks, a manual Pi smoke-test checklist, and usage and development documentation. Include common tasks in Makefile.
 
-- Integration note: extend the browser task's small controller/recovery checks and manual checklist rather than duplicating them.
+- Integration note: extend the browser task's small controller/recovery checks and manual checklist rather than duplicating them; include workflow launch paths, missing-template handling, and fresh-session cancellation without fallback or automatic reopening.
 
 ### Tests coverage for browser.ts
 

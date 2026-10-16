@@ -118,6 +118,7 @@ uuid: f8957813-fb9b-4714-a2ed-c14bd696595e
 - Alt+S dispatches `/shemiq` via `pi.sendUserMessage("/shemiq", { expandPromptTemplates: true })` to get `ExtensionCommandContext`
 - Follow-up simplification: TUI/idle checks centralized in the command handler; Alt+S only dispatches `/shemiq`, which Pi handles before model execution or queuing.
 - Action handler registry (`registerActionHandler`) provides typed hooks for follow-up tasks
+- Follow-up refinement in `./connect-refinement-and-implementation.md` supersedes the planned pre-action reload-and-resolve helper: launch from the displayed snapshot using existing eligibility; no helper or additional task-validity checks are required.
 - Unconnected actions show "not implemented yet" notification
 - Recovery: error state shows diagnostics, retains New/Refresh/Close; stale rows cleared
 - Scrolling: bounded viewport based on terminal height, scroll indicators for overflow
