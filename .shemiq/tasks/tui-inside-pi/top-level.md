@@ -68,7 +68,7 @@ status: refined
 ### Starting workflows
 
 - Refinement and implementation close the browser and automatically start the corresponding existing prompt in a fresh Pi session by default.
-- Provide alternate bindings for the same refinement or implementation workflow in the current session.
+- Launcher-settings refinement supersedes alternate current-session bindings: `r/i` open a model/session dialog, with `c` toggling current-session mode and fresh sessions selected by default. Creation does not use this dialog.
 - Supply normal task prompt inputs to fresh sessions; do not generate a conversation handoff or copy previous conversation history.
 - Route top-level refinement to its existing prompt and subtask refinement to the existing parent-and-subtask prompt.
 - Implement refined subtasks from their own documents; implement new subtasks through the existing parent-based prompt.
@@ -107,13 +107,15 @@ status: refined
 - The browser subtask is implemented and done (`extensions/shemiq/index.ts`, `browser.ts`, `controller.ts`).
 - `/shemiq` command and `Alt+S` shortcut open a full custom screen with hierarchy, keyboard navigation, action legend, and refresh.
 - Eligibility rules and action handler hooks are in place; unconnected actions report "not implemented yet".
-- `registerActionHandler()` in `browser.ts` is the integration point for the remaining four subtasks.
+- `index.ts` owns a runtime-local action-handler map passed into `openBrowser()`; remaining actions register in that map, not module-global state.
 - The workflow connection subtask is implemented and done (`extensions/shemiq/workflows.ts`).
-- Refine (r/R) and implement (i/I) browser actions now route to the four existing prompt templates with proper argument quoting.
-- Fresh sessions (r/i) use `ctx.newSession()` + `withSession`; current sessions (R/I) use `pi.sendUserMessage()`.
+- Refine (`r`) and implement (`i`) route to the four existing prompt templates with proper argument quoting.
+- Browser/dialog disposal precedes dispatch; fresh sessions use `withSession` to call `/shemiq-launch` in the destination runtime, while current-session mode applies the model directly.
 - Missing template detection keeps the browser open with an actionable error.
 - Fixture refactoring is implemented and done: shared recursive `makeTreeNode()` and exported production `flattenTree()` now drive controller/workflow fixtures.
-- All 17 extension tests pass, including one focused helper check; broader browser coverage and runner/Makefile setup remain follow-ups.
+- All 19 extension tests pass, including `shemiq-launch` JSON transport/validation and destination model-before-prompt ordering; broader browser coverage and runner/Makefile setup remain follow-ups.
+- Prompt launcher settings is implemented and done: `r/i` now open a model/session overlay dialog (`launcher.ts`) instead of directly dispatching; `R/I` current-session bindings removed.
+- Launcher model choices respect Pi's scoped models and their order when configured, falling back to the full authenticated list when no scope is set.
 - Creation, archiving, and verification/documentation remain new.
 
 ## Tasks
@@ -147,6 +149,16 @@ status: done
 
 Unify test fixtures with a shared recursive `makeTreeNode()` helper, express hierarchies as nested definitions, and reuse production `flattenTree()` for browser rows.
 
+
+### Prompt launcher settings
+:::shemiq
+type: task
+source: ./prompt-launcher-settings.md
+status: done
+:::
+
+Before refinement or implementation, show a model/session dialog with available authenticated chat models, Pi selection movement bindings, `c` to toggle current-session mode, Enter to launch, and Esc to return to the browser. Default to the current model and a fresh session; replace the separate `R/I` actions.
+
 ### Add task creation
 :::shemiq
 type: task
@@ -157,6 +169,11 @@ status: new
 Collect a multiline description and start the existing creation prompt in the current session, returning to the browser if description entry is cancelled.
 
 - Integration note: connect the browser's New task hook, replacing its placeholder, and reuse its return/close behavior; the workflow task's current-session dispatch boundary should be reusable.
+- Launcher integration note: creation stays current-session only without this dialog; follow the prepare → close/dispose → dispatch boundary used by `openBrowser()` and `dispatchLaunch()`.
+
+Take into account new feature of adding a subtask as well .shemiq/tasks/new-subtask-command/top-level.md.
+It should be creating sibling tasks - on top-level, it should target new top-level task, when on top of a sub task,
+it should create a sub-task with the hovered task as "--after".
 
 ### Add immediate archiving
 :::shemiq
@@ -180,12 +197,18 @@ Add lightweight automated workflow checks, a manual Pi smoke-test checklist, and
 
 - Integration note: extend the browser task's small controller/recovery checks and manual checklist rather than duplicating them; include workflow launch paths, missing-template handling, and fresh-session cancellation without fallback or automatic reopening.
 - Fixture integration note: reuse the fixture task's shared `makeTreeNode()` and exported `flattenTree()` for tree-based scenarios; test-runner setup and Makefile integration remain here.
+- Launcher integration note: cover model selection, the `c` current-session toggle, Enter/Esc, both session modes, selected-model behavior, cancellation, and launch failures rather than the superseded `R/I` bindings.
 
-### Tests coverage for browser.ts
+### Tests coverage for browser.ts and launcher.ts
 
-- Integration note: reuse the fixture task's shared `makeTreeNode()` and exported `flattenTree()`; the fixture refactor does not add broader browser coverage.
+- Existing focused coverage in `workflows.test.ts` exercises `dispatchLaunch()` → serialized command → registered `shemiq-launch` handler, exact prompt preservation, model-before-prompt ordering, and invalid payload rejection; reuse rather than duplicate it.
+- Context-handling regression: launch → `/reload` → reopen browser → Enter to launch again, in both session modes; include real Pi replacement-runtime smoke coverage.
+- Invalidate source `pi` and command-context getters in mocks; verify model selection uses the destination runtime, browser/dialog disposal precedes dispatch, and runtime-local handlers are renewed on reload.
+- Cover duplicate confirmation, model-before-prompt ordering, cancellation, and replacement/model failures without old-session fallback or reopening. Context-handling tests remain in this subtask, not the launcher fix.
 
 ### Refactor hotkeys definitions
 
 The hotkeys are quite hardcoded, would be better to extract them behind some layer,
 so that it's more readable and can be configured/customized.
+
+- Launcher integration note: the settings task removes `R/I` and adds a dialog-local `c` current-session toggle using Pi selection movement bindings; general hotkey customization remains here.

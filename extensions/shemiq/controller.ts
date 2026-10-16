@@ -24,7 +24,7 @@ export interface BrowserRow {
 
 export type BrowserAction =
   | { kind: "new" | "archive" }
-  | { kind: "refine" | "implement"; session: "fresh" | "current" };
+  | { kind: "refine" | "implement" };
 
 export type ActionKind = BrowserAction["kind"];
 
@@ -36,18 +36,8 @@ export interface ActionBinding {
 
 export const actionBindings: ActionBinding[] = [
   { key: "n", label: "New task", action: { kind: "new" } },
-  { key: "r", label: "Refine", action: { kind: "refine", session: "fresh" } },
-  { key: "i", label: "Implement", action: { kind: "implement", session: "fresh" } },
-  {
-    key: "R",
-    label: "Refine (current)",
-    action: { kind: "refine", session: "current" },
-  },
-  {
-    key: "I",
-    label: "Implement (current)",
-    action: { kind: "implement", session: "current" },
-  },
+  { key: "r", label: "Refine", action: { kind: "refine" } },
+  { key: "i", label: "Implement", action: { kind: "implement" } },
   { key: "a", label: "Archive", action: { kind: "archive" } },
 ];
 

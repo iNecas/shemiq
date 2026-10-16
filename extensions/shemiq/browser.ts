@@ -8,6 +8,7 @@ import type {
   Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
+import type { PromptLaunch } from "./workflows.ts";
 import {
   matchesKey,
   truncateToWidth,
@@ -29,12 +30,15 @@ import {
 // Public entry point
 // ---------------------------------------------------------------------------
 
-export async function openBrowser(ctx: ExtensionCommandContext): Promise<void> {
+export async function openBrowser(
+  ctx: ExtensionCommandContext,
+  actionHandlers: ReadonlyMap<ActionKind, ActionHandler>,
+): Promise<PromptLaunch | undefined> {
   const cwd = ctx.cwd;
   const loadResult = await loadTree(cwd);
 
-  await ctx.ui.custom<void>((tui, theme, _kb, done) => {
-    return new BrowserComponent(tui, theme, cwd, loadResult, done, ctx);
+  return ctx.ui.custom<PromptLaunch | undefined>((tui, theme, _kb, done) => {
+    return new BrowserComponent(tui, theme, cwd, loadResult, done, ctx, actionHandlers);
   });
 }
 
@@ -46,19 +50,7 @@ export type ActionHandler = (
   action: BrowserAction,
   row: BrowserRow | null,
   ctx: ExtensionCommandContext,
-) => Promise<{ close?: boolean; refresh?: boolean }>;
-
-const actionHandlers: Map<ActionKind, ActionHandler> = new Map();
-
-/**
- * Register an action handler. Used by follow-up tasks to connect workflows.
- */
-export function registerActionHandler(
-  kind: ActionKind,
-  handler: ActionHandler,
-): void {
-  actionHandlers.set(kind, handler);
-}
+) => Promise<{ close?: boolean; refresh?: boolean; launch?: PromptLaunch }>;
 
 // ---------------------------------------------------------------------------
 // Browser component
@@ -68,8 +60,10 @@ class BrowserComponent implements Component {
   private tui: TUI;
   private theme: Theme;
   private cwd: string;
-  private done: (value: void) => void;
+  private done: (value: PromptLaunch | undefined) => void;
   private ctx: ExtensionCommandContext;
+  private actionHandlers: ReadonlyMap<ActionKind, ActionHandler>;
+  private isDispatching = false;
 
   private rows: BrowserRow[] = [];
   private selectedIndex = 0;
@@ -93,14 +87,16 @@ class BrowserComponent implements Component {
     theme: Theme,
     cwd: string,
     loadResult: TreeLoadResult,
-    done: (value: void) => void,
+    done: (value: PromptLaunch | undefined) => void,
     ctx: ExtensionCommandContext,
+    actionHandlers: ReadonlyMap<ActionKind, ActionHandler>,
   ) {
     this.tui = tui;
     this.theme = theme;
     this.cwd = cwd;
     this.done = done;
     this.ctx = ctx;
+    this.actionHandlers = actionHandlers;
     this.updateTreeState(loadResult);
   }
 
@@ -151,16 +147,21 @@ class BrowserComponent implements Component {
     this.tui.requestRender();
   }
 
-  private close(): void {
+  private close(launch?: PromptLaunch): void {
+    if (this.isClosed) return;
+    this.dispose();
+    this.done(launch);
+  }
+
+  dispose(): void {
     this.isClosed = true;
     if (this.notificationTimeout) clearTimeout(this.notificationTimeout);
-    this.done(undefined);
   }
 
   // -- Input handling -------------------------------------------------------
 
   handleInput(data: string): void {
-    if (this.isClosed) return;
+    if (this.isClosed || this.isDispatching) return;
 
     // Close
     if (matchesKey(data, "escape") || data === "q") {
@@ -250,17 +251,18 @@ class BrowserComponent implements Component {
     }
 
     // Check for connected handler
-    const handler = actionHandlers.get(kind);
+    const handler = this.actionHandlers.get(kind);
     if (!handler) {
       this.showNotification(`"${kind}" is not implemented yet`);
       return;
     }
 
+    this.isDispatching = true;
     try {
       const result = await handler(action, row, this.ctx);
       if (this.isClosed) return;
-      if (result.close) {
-        this.close();
+      if (result.launch || result.close) {
+        this.close(result.launch);
         return;
       }
       if (result.refresh) {
@@ -270,6 +272,8 @@ class BrowserComponent implements Component {
       if (this.isClosed) return;
       const msg = err instanceof Error ? err.message : String(err);
       this.showNotification(`Action failed: ${msg}`);
+    } finally {
+      this.isDispatching = false;
     }
   }
 

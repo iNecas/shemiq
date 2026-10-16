@@ -1,14 +1,16 @@
 /**
  * Workflow handlers: connect refinement and implementation actions
- * from the browser to Pi's prompt templates.
+ * from the browser to Pi's prompt templates, with a launcher dialog
+ * for model/session selection.
  */
 
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import type { BrowserAction, BrowserRow } from "./controller.ts";
+import type { ActionKind, BrowserAction, BrowserRow } from "./controller.ts";
 import type { ActionHandler } from "./browser.ts";
+import type { LaunchSettings } from "./launcher.ts";
 import * as path from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -21,10 +23,23 @@ import * as path from "node:path";
  */
 export function registerWorkflowHandlers(
   pi: ExtensionAPI,
-  register: (kind: string, handler: ActionHandler) => void,
+  register: (kind: ActionKind, handler: ActionHandler) => void,
 ): void {
   register("refine", createPromptDispatcher(pi));
   register("implement", createPromptDispatcher(pi));
+
+  // Session replacement recreates this handler with the destination's pi API.
+  pi.registerCommand("shemiq-launch", {
+    description: "Internal Shemiq destination-session prompt dispatch",
+    handler: async (args, ctx) => {
+      try {
+        const launch = parseLaunch(args);
+        await applyModelAndPrompt(pi, ctx, launch);
+      } catch (err) {
+        ctx.ui.notify(`Shemiq launch failed: ${errorMessage(err)}`, "error");
+      }
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -36,51 +51,125 @@ function createPromptDispatcher(pi: ExtensionAPI) {
     action: BrowserAction,
     row: BrowserRow | null,
     ctx: ExtensionCommandContext,
-  ): Promise<{ close?: boolean; refresh?: boolean }> => {
+  ): Promise<{ launch?: PromptLaunch }> => {
     if (!row) {
       throw new Error("No task selected");
     }
 
     const route = builtPromptMessage(action, row, ctx.cwd);
-    const session = (action as { session: "fresh" | "current" }).session;
 
-    // Check template is loaded before closing the browser.
-    if (!isTemplateLoaded(pi, route.template)) {
-      throw new Error(
-        `Prompt template "/${route.template}" is not loaded. ` +
-          `Load the Shemiq prompt templates and run /reload.`,
-      );
+    // Check template is loaded before showing the launcher.
+    requireTemplate(pi, route.template);
+
+    // Show the launcher dialog to select model and session mode.
+    // Dynamic import avoids pulling pi-tui into pure-function test imports.
+    const { showLauncher } = await import("./launcher.ts");
+    const actionLabel = action.kind === "refine" ? "Refine" : "Implement";
+    const settings = await showLauncher(ctx, `${actionLabel}: ${row.node.title}`);
+
+    if (!settings) {
+      // User cancelled – return to browser with selection preserved.
+      return {};
     }
 
-    const message = route.message;
-
-    if (session === "current") {
-      pi.sendUserMessage(message, { expandPromptTemplates: true });
-      return { close: true };
-    }
-
-    // Fresh session: close browser first (done by returning close: true),
-    // then create new session and submit there.
-    // We need to do it the other way: first prepare, then close, then create session.
-    // But the browser dispatch already handles close for us when we return { close: true }.
-    // The trick: we start newSession which replaces context. The browser's done()
-    // will be called after we return. So we fire newSession and return close.
-
-    const { cancelled } = await ctx.newSession({
-      withSession: async (newCtx) => {
-        await newCtx.sendUserMessage(message, { expandPromptTemplates: true });
-      },
-    });
-
-    if (cancelled) {
-      // Per spec: leave browser closed, report cancellation.
-      // We still return close: true so the browser disposes.
-      ctx.ui.notify("Session creation was cancelled", "warning");
-      return { close: true };
-    }
-
-    return { close: true };
+    // Retain pre-launch failures in the browser. No session-bound side effects.
+    requireTemplate(pi, route.template);
+    await requireAvailableModel(ctx, settings);
+    return { launch: { ...route, ...settings } };
   };
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch after the browser and dialog have been disposed
+// ---------------------------------------------------------------------------
+
+export interface PromptLaunch extends PromptMessage, LaunchSettings {}
+
+/** Called only after openBrowser resolves; never from component input handlers. */
+export async function dispatchLaunch(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  launch: PromptLaunch,
+): Promise<void> {
+  if (launch.session === "current") {
+    await applyModelAndPrompt(pi, ctx, launch);
+    return;
+  }
+
+  // Only serialized launch data crosses replacement, never a captured pi API
+  // or model object. The command resolves against the new extension runtime.
+  const command = `/shemiq-launch ${JSON.stringify(launch)}`;
+  const { cancelled } = await ctx.newSession({
+    withSession: async (newCtx) => {
+      await newCtx.sendUserMessage(command, { expandPromptTemplates: true });
+    },
+  });
+
+  // Cancellation leaves the original context active. On success, do not touch it.
+  // Replacement failures propagate to Pi's command error handling, not old UI.
+  if (cancelled) ctx.ui.notify("Session creation was cancelled", "warning");
+}
+
+async function applyModelAndPrompt(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  launch: PromptLaunch,
+): Promise<void> {
+  requireTemplate(pi, launch.template);
+  const model = await requireAvailableModel(ctx, launch);
+  if (!(await pi.setModel(model))) {
+    throw new Error(
+      `Failed to set model ${launch.provider}/${launch.modelId}. Check provider authentication.`,
+    );
+  }
+  pi.sendUserMessage(launch.message, { expandPromptTemplates: true });
+}
+
+function parseLaunch(args: string): PromptLaunch {
+  const data = JSON.parse(args);
+  if (
+    !data ||
+    typeof data.provider !== "string" ||
+    typeof data.modelId !== "string" ||
+    typeof data.template !== "string" ||
+    typeof data.message !== "string" ||
+    (data.session !== "fresh" && data.session !== "current") ||
+    !data.template.startsWith("shemiq-") ||
+    !data.message.startsWith(`/${data.template} `)
+  ) {
+    throw new Error("Invalid Shemiq launch data. Open /shemiq and try again.");
+  }
+  return data;
+}
+
+async function requireAvailableModel(
+  ctx: ExtensionCommandContext,
+  settings: LaunchSettings,
+) {
+  const models = await ctx.modelRegistry.getAvailable();
+  const model = models.find(
+    (candidate) =>
+      candidate.provider === settings.provider && candidate.id === settings.modelId,
+  );
+  if (!model) {
+    throw new Error(
+      `Model ${settings.provider}/${settings.modelId} is unavailable. Check provider authentication.`,
+    );
+  }
+  return model;
+}
+
+function requireTemplate(pi: ExtensionAPI, template: string): void {
+  if (!isTemplateLoaded(pi, template)) {
+    throw new Error(
+      `Prompt template "/${template}" is not loaded. ` +
+        `Load the Shemiq prompt templates and run /reload.`,
+    );
+  }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 // ---------------------------------------------------------------------------

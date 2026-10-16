@@ -61,8 +61,7 @@ describe("getLegendEntries", () => {
     const entries = getLegendEntries(row);
     expect(entries.map(({ key, action }) => ({ key, action }))).toEqual([
       { key: "n", action: { kind: "new" } },
-      { key: "r", action: { kind: "refine", session: "fresh" } },
-      { key: "R", action: { kind: "refine", session: "current" } },
+      { key: "r", action: { kind: "refine" } },
       { key: "a", action: { kind: "archive" } },
     ]);
   });
@@ -79,7 +78,7 @@ describe("getLegendEntries", () => {
     expect(entries.map(({ action }) => action)).toEqual([{ kind: "new" }]);
   });
 
-  it("offers both session choices for an eligible implementation", () => {
+  it("offers implement for an eligible refined subtask", () => {
     const [, child] = flattenTree([
       makeTreeNode({
         title: "Parent",
@@ -90,8 +89,7 @@ describe("getLegendEntries", () => {
     const entries = getLegendEntries(child);
     expect(entries.map(({ key, action }) => ({ key, action }))).toEqual([
       { key: "n", action: { kind: "new" } },
-      { key: "i", action: { kind: "implement", session: "fresh" } },
-      { key: "I", action: { kind: "implement", session: "current" } },
+      { key: "i", action: { kind: "implement" } },
     ]);
   });
 });
