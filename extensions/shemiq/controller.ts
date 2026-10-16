@@ -140,7 +140,7 @@ function runShemiqTree(cwd: string): Promise<string> {
   });
 }
 
-function flattenTree(
+export function flattenTree(
   nodes: TreeNode[],
   depth = 0,
   ancestors: TreeNode[] = [],

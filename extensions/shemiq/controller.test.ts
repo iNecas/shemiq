@@ -4,71 +4,37 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  type BrowserRow,
+  flattenTree,
   getEligibleActions,
   getLegendEntries,
   resolveSelection,
 } from "./controller.ts";
-import {
-  type TreeNode,
-  TreeStatusNew,
-  TreeStatusRefined,
-  TreeStatusDone,
-  TreeTaskTypeTopLevel,
-  TreeTaskTypeTask,
-} from "./types.ts";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeNode(
-  overrides: Partial<TreeNode> & { title: string },
-): TreeNode {
-  return {
-    type: overrides.type ?? TreeTaskTypeTask,
-    title: overrides.title,
-    status: overrides.status ?? TreeStatusNew,
-    projectRoot: "/test",
-    subtasks: overrides.subtasks ?? [],
-    ...overrides,
-  };
-}
-
-function makeRow(
-  node: TreeNode,
-  depth = 0,
-  ancestors: TreeNode[] = [],
-): BrowserRow {
-  return {
-    id: node.uuid || node.path || node.title,
-    node,
-    depth,
-    ancestors,
-  };
-}
+import { makeTreeNode } from "./test-fixtures.ts";
+import { TreeStatusRefined, TreeStatusDone } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Eligibility contract
 // ---------------------------------------------------------------------------
 
 describe("getEligibleActions", () => {
-  const parent = makeNode({
-    title: "Parent",
-    type: TreeTaskTypeTopLevel,
-    status: TreeStatusRefined,
-    path: "/test/.shemiq/tasks/parent/top-level.md",
-  });
+  const [parent, child] = flattenTree([
+    makeTreeNode({
+      title: "Parent",
+      status: TreeStatusRefined,
+      path: "/project/.shemiq/tasks/parent/top-level.md",
+      subtasks: [{ title: "Inline task" }],
+    }),
+  ]);
 
   it.each([
     {
       name: "document-backed top-level task",
-      row: makeRow(parent),
+      row: parent,
       expected: new Set(["archive"]),
     },
     {
       name: "inline subtask with ancestors but no document path or UUID",
-      row: makeRow(makeNode({ title: "Inline task" }), 1, [parent]),
+      row: child,
       expected: new Set(["refine", "implement"]),
     },
   ])("returns action kinds for a $name", ({ row, expected }) => {
@@ -91,12 +57,7 @@ describe("getLegendEntries", () => {
   });
 
   it("includes eligible actions for a row", () => {
-    const node = makeNode({
-      title: "Task",
-      type: TreeTaskTypeTopLevel,
-      status: TreeStatusNew,
-    });
-    const row = makeRow(node);
+    const [row] = flattenTree([makeTreeNode({ title: "Task" })]);
     const entries = getLegendEntries(row);
     expect(entries.map(({ key, action }) => ({ key, action }))).toEqual([
       { key: "n", action: { kind: "new" } },
@@ -107,24 +68,26 @@ describe("getLegendEntries", () => {
   });
 
   it("keeps only global creation available for completed subtasks", () => {
-    const parent = makeNode({
-      title: "Parent",
-      type: TreeTaskTypeTopLevel,
-      status: TreeStatusRefined,
-    });
-    const child = makeNode({ title: "Child", status: TreeStatusDone });
-    const entries = getLegendEntries(makeRow(child, 1, [parent]));
+    const [, child] = flattenTree([
+      makeTreeNode({
+        title: "Parent",
+        status: TreeStatusRefined,
+        subtasks: [{ title: "Child", status: TreeStatusDone }],
+      }),
+    ]);
+    const entries = getLegendEntries(child);
     expect(entries.map(({ action }) => action)).toEqual([{ kind: "new" }]);
   });
 
   it("offers both session choices for an eligible implementation", () => {
-    const parent = makeNode({
-      title: "Parent",
-      type: TreeTaskTypeTopLevel,
-      status: TreeStatusRefined,
-    });
-    const child = makeNode({ title: "Child", status: TreeStatusRefined });
-    const entries = getLegendEntries(makeRow(child, 1, [parent]));
+    const [, child] = flattenTree([
+      makeTreeNode({
+        title: "Parent",
+        status: TreeStatusRefined,
+        subtasks: [{ title: "Child", status: TreeStatusRefined }],
+      }),
+    ]);
+    const entries = getLegendEntries(child);
     expect(entries.map(({ key, action }) => ({ key, action }))).toEqual([
       { key: "n", action: { kind: "new" } },
       { key: "i", action: { kind: "implement", session: "fresh" } },
@@ -138,11 +101,11 @@ describe("getLegendEntries", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveSelection", () => {
-  const rows: BrowserRow[] = [
-    makeRow(makeNode({ title: "A", uuid: "aaa" })),
-    makeRow(makeNode({ title: "B", uuid: "bbb" })),
-    makeRow(makeNode({ title: "C", uuid: "ccc" })),
-  ];
+  const rows = flattenTree([
+    makeTreeNode({ title: "A", uuid: "aaa" }),
+    makeTreeNode({ title: "B", uuid: "bbb" }),
+    makeTreeNode({ title: "C", uuid: "ccc" }),
+  ]);
 
   it("preserves selection by id", () => {
     expect(resolveSelection(rows, "bbb", 1)).toBe(1);

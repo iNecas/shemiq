@@ -112,6 +112,8 @@ status: refined
 - Refine (r/R) and implement (i/I) browser actions now route to the four existing prompt templates with proper argument quoting.
 - Fresh sessions (r/i) use `ctx.newSession()` + `withSession`; current sessions (R/I) use `pi.sendUserMessage()`.
 - Missing template detection keeps the browser open with an actionable error.
+- Fixture refactoring is implemented and done: shared recursive `makeTreeNode()` and exported production `flattenTree()` now drive controller/workflow fixtures.
+- All 17 extension tests pass, including one focused helper check; broader browser coverage and runner/Makefile setup remain follow-ups.
 - Creation, archiving, and verification/documentation remain new.
 
 ## Tasks
@@ -135,6 +137,15 @@ status: done
 Apply existing workflow eligibility and prompt routing from the displayed snapshot, with fresh sessions by default and alternate current-session bindings.
 
 - Integration note: reuse the browser task's shared eligibility, action hooks, and command-capable entry path; automatic pre-action reloads and a reload-and-resolve helper are no longer required.
+
+### Refactor fixtures definitions
+:::shemiq
+type: task
+source: ./refactor-fixtures-definitions.md
+status: done
+:::
+
+Unify test fixtures with a shared recursive `makeTreeNode()` helper, express hierarchies as nested definitions, and reuse production `flattenTree()` for browser rows.
 
 ### Add task creation
 :::shemiq
@@ -168,8 +179,11 @@ status: new
 Add lightweight automated workflow checks, a manual Pi smoke-test checklist, and usage and development documentation. Include common tasks in Makefile.
 
 - Integration note: extend the browser task's small controller/recovery checks and manual checklist rather than duplicating them; include workflow launch paths, missing-template handling, and fresh-session cancellation without fallback or automatic reopening.
+- Fixture integration note: reuse the fixture task's shared `makeTreeNode()` and exported `flattenTree()` for tree-based scenarios; test-runner setup and Makefile integration remain here.
 
 ### Tests coverage for browser.ts
+
+- Integration note: reuse the fixture task's shared `makeTreeNode()` and exported `flattenTree()`; the fixture refactor does not add broader browser coverage.
 
 ### Refactor hotkeys definitions
 

@@ -2,44 +2,9 @@
 
 import { describe, it, expect } from "vitest";
 import { builtPromptMessage } from "./workflows.ts";
-import type { BrowserRow } from "./controller.ts";
-import type { TreeNode } from "./types.ts";
-import {
-  TreeStatusNew,
-  TreeStatusRefined,
-  TreeTaskTypeTopLevel,
-  TreeTaskTypeTask,
-} from "./types.ts";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeNode(
-  overrides: Partial<TreeNode> & { title: string },
-): TreeNode {
-  return {
-    type: overrides.type ?? TreeTaskTypeTask,
-    title: overrides.title,
-    status: overrides.status ?? TreeStatusNew,
-    projectRoot: "/project",
-    subtasks: overrides.subtasks ?? [],
-    ...overrides,
-  };
-}
-
-function makeRow(
-  node: TreeNode,
-  depth = 0,
-  ancestors: TreeNode[] = [],
-): BrowserRow {
-  return {
-    id: node.uuid || node.path || node.title,
-    node,
-    depth,
-    ancestors,
-  };
-}
+import { flattenTree } from "./controller.ts";
+import { makeTreeNode, type TreeNodeDefinition } from "./test-fixtures.ts";
+import { TreeStatusRefined } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Prompt routing
@@ -47,21 +12,19 @@ function makeRow(
 
 describe("builtPromptMessage", () => {
   const cwd = "/project";
-  const parent = makeNode({
+  const parent: TreeNodeDefinition = {
     title: "Feature X",
-    type: TreeTaskTypeTopLevel,
     status: TreeStatusRefined,
     path: "/project/.shemiq/tasks/feature-x/top-level.md",
-  });
+  };
 
   it("routes top-level refinement", () => {
-    const topLevel = makeNode({
-      title: "Feature Y",
-      type: TreeTaskTypeTopLevel,
-      status: TreeStatusNew,
-      path: "/project/.shemiq/tasks/feature-y/top-level.md",
-    });
-    const row = makeRow(topLevel);
+    const [row] = flattenTree([
+      makeTreeNode({
+        title: "Feature Y",
+        path: "/project/.shemiq/tasks/feature-y/top-level.md",
+      }),
+    ]);
     const result = builtPromptMessage(
       { kind: "refine", session: "fresh" },
       row,
@@ -74,11 +37,9 @@ describe("builtPromptMessage", () => {
   });
 
   it("routes subtask refinement with parent path and title", () => {
-    const sub = makeNode({
-      title: "Build widget",
-      status: TreeStatusNew,
-    });
-    const row = makeRow(sub, 1, [parent]);
+    const [, row] = flattenTree([
+      makeTreeNode({ ...parent, subtasks: [{ title: "Build widget" }] }),
+    ]);
     const result = builtPromptMessage(
       { kind: "refine", session: "fresh" },
       row,
@@ -91,12 +52,18 @@ describe("builtPromptMessage", () => {
   });
 
   it("routes refined subtask implementation", () => {
-    const sub = makeNode({
-      title: "Build widget",
-      status: TreeStatusRefined,
-      path: "/project/.shemiq/tasks/feature-x/build-widget.md",
-    });
-    const row = makeRow(sub, 1, [parent]);
+    const [, row] = flattenTree([
+      makeTreeNode({
+        ...parent,
+        subtasks: [
+          {
+            title: "Build widget",
+            status: TreeStatusRefined,
+            path: "/project/.shemiq/tasks/feature-x/build-widget.md",
+          },
+        ],
+      }),
+    ]);
     const result = builtPromptMessage(
       { kind: "implement", session: "fresh" },
       row,
@@ -109,11 +76,9 @@ describe("builtPromptMessage", () => {
   });
 
   it("routes new subtask implementation through parent", () => {
-    const sub = makeNode({
-      title: "Build widget",
-      status: TreeStatusNew,
-    });
-    const row = makeRow(sub, 1, [parent]);
+    const [, row] = flattenTree([
+      makeTreeNode({ ...parent, subtasks: [{ title: "Build widget" }] }),
+    ]);
     const result = builtPromptMessage(
       { kind: "implement", session: "fresh" },
       row,
@@ -126,11 +91,9 @@ describe("builtPromptMessage", () => {
   });
 
   it("quotes titles with single quotes", () => {
-    const sub = makeNode({
-      title: "it's a test",
-      status: TreeStatusNew,
-    });
-    const row = makeRow(sub, 1, [parent]);
+    const [, row] = flattenTree([
+      makeTreeNode({ ...parent, subtasks: [{ title: "it's a test" }] }),
+    ]);
     const result = builtPromptMessage(
       { kind: "refine", session: "fresh" },
       row,
@@ -140,13 +103,13 @@ describe("builtPromptMessage", () => {
   });
 
   it("uses relative paths including .. for external tasks", () => {
-    const external = makeNode({
-      title: "External",
-      type: TreeTaskTypeTopLevel,
-      status: TreeStatusNew,
-      path: "/other-project/.shemiq/tasks/ext/top-level.md",
-    });
-    const row = makeRow(external);
+    const [row] = flattenTree([
+      makeTreeNode({
+        title: "External",
+        projectRoot: "/other-project",
+        path: "/other-project/.shemiq/tasks/ext/top-level.md",
+      }),
+    ]);
     const result = builtPromptMessage(
       { kind: "refine", session: "fresh" },
       row,
