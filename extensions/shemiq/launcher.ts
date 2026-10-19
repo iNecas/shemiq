@@ -69,15 +69,19 @@ async function getAvailableChatModels(
   ctx: ExtensionCommandContext,
 ): Promise<Model<Api>[]> {
   const models = await ctx.modelRegistry.getAvailable();
-  if (ctx.scopedModels.length === 0) return [...models];
 
-  return ctx.scopedModels.flatMap(({ model }) => {
-    const available = models.find(
-      (candidate) =>
-        candidate.provider === model.provider && candidate.id === model.id,
-    );
-    return available ? [available] : [];
-  });
+  const selected =
+    ctx.scopedModels.length === 0
+      ? models
+      : ctx.scopedModels.flatMap(({ model }) => {
+          const available = models.find(
+            (candidate) =>
+              candidate.provider === model.provider && candidate.id === model.id,
+          );
+          return available ? [available] : [];
+        });
+
+  return [...selected].reverse();
 }
 
 /** Build a display label for a model: "provider / model-id". */
