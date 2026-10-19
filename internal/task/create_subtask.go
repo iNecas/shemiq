@@ -259,19 +259,25 @@ func verifyInsertion(parent *Task, stagedPath, title string) error {
 		}
 	}
 
-	// Check for accidental directives in the description.
-	for _, d := range allDirectives(newDoc.root) {
-		isExisting := false
-		for _, od := range allDirectives(doc.root) {
-			if d.opening.line == od.opening.line {
-				isExisting = true
-				break
-			}
-		}
-		if !isExisting {
+	// Check for accidental directives in the description: every directive
+	// in the staged document must correspond to one in the original. Match
+	// by source text rather than line numbers – the insertion shifts lines
+	// of the directives that follow it.
+	oldCounts := directiveCounts(doc)
+	for text, count := range directiveCounts(newDoc) {
+		if count > oldCounts[text] {
 			return fmt.Errorf("description introduces a:::shemiq directive")
 		}
 	}
 
 	return nil
+}
+
+// directiveCounts counts occurrences of each directive's source text.
+func directiveCounts(doc *parsedDocument) map[string]int {
+	counts := make(map[string]int)
+	for _, d := range allDirectives(doc.root) {
+		counts[string(doc.data[d.span.start:d.span.end])]++
+	}
+	return counts
 }

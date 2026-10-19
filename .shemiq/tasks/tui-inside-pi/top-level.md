@@ -116,7 +116,12 @@ status: refined
 - All 19 extension tests pass, including `shemiq-launch` JSON transport/validation and destination model-before-prompt ordering; broader browser coverage and runner/Makefile setup remain follow-ups.
 - Prompt launcher settings is implemented and done: `r/i` now open a model/session overlay dialog (`launcher.ts`) instead of directly dispatching; `R/I` current-session bindings removed.
 - Launcher model choices respect Pi's scoped models and their order when configured, falling back to the full authenticated list when no scope is set.
-- Creation, archiving, and verification/documentation remain new.
+- Task creation is implemented and done (`extensions/shemiq/creation.ts`, `creation-dialog.ts`).
+- `n` is context-dependent (sibling semantics): subtask row → new subtask under the same parent inserted after the hovered task; top-level row, no selection, empty, or error state → new top-level task; the legend label follows ("New task"/"New subtask").
+- A single overlay dialog collects an optional title and a required multiline description (Tab/Shift+Tab focus, Enter newline, Ctrl+S/Alt+Enter submit, Esc cancel); blank description keeps the dialog open with an inline error.
+- Title filled → direct non-interactive CLI call (`shemiq new` / `shemiq new-subtask --after`), browser stays open, refreshes, and notifies with the printed path; CLI rejections and a missing binary surface as notifications.
+- Title blank → browser closes and `/shemiq-new` or the new `/shemiq-new-subtask` prompt is dispatched in the current session through the existing `dispatchLaunch()` boundary (template and model checked before closing).
+- Archiving and verification/documentation remain new.
 
 ## Tasks
 
@@ -163,10 +168,10 @@ Before refinement or implementation, show a model/session dialog with available 
 :::shemiq
 type: task
 source: ./add-task-creation.md
-status: new
+status: done
 :::
 
-Collect a multiline description and start the existing creation prompt in the current session, returning to the browser if description entry is cancelled.
+Collect an optional title and a multiline description in a single dialog; when the title is filled, create the sibling task directly through the CLI (top-level or subtask with the hovered task as `--after`); when blank, close the browser and dispatch `/shemiq-new` or the new `/shemiq-new-subtask` in the current session. Cancelling returns to the browser.
 
 - Integration note: connect the browser's New task hook, replacing its placeholder, and reuse its return/close behavior; the workflow task's current-session dispatch boundary should be reusable.
 - Launcher integration note: creation stays current-session only without this dialog; follow the prepare → close/dispose → dispatch boundary used by `openBrowser()` and `dispatchLaunch()`.
@@ -175,6 +180,9 @@ Take into account new feature of adding a subtask as well .shemiq/tasks/new-subt
 It should be creating sibling tasks - on top-level, it should target new top-level task, when on top of a sub task,
 it should create a sub-task with the hovered task as "--after".
 
+### More end to end tests
+
+more end to end tests
 ### Add immediate archiving
 :::shemiq
 type: task
@@ -185,6 +193,7 @@ status: new
 Archive the selected top-level task without confirmation, keep the browser open, refresh the hierarchy, and report success or failure.
 
 - Integration note: connect the browser's Archive hook and refresh/recovery foundation; existing CLI project restrictions still apply.
+- Creation integration note: the handler-result `notify` field (applied before refresh) can carry the archive success message; the direct-CLI `execFile` pattern from `creation.ts` (including the `ENOENT` missing-binary check) is reusable for `shemiq archive`.
 
 ### Verify and document the in-Pi workflows
 :::shemiq
@@ -198,6 +207,7 @@ Add lightweight automated workflow checks, a manual Pi smoke-test checklist, and
 - Integration note: extend the browser task's small controller/recovery checks and manual checklist rather than duplicating them; include workflow launch paths, missing-template handling, and fresh-session cancellation without fallback or automatic reopening.
 - Fixture integration note: reuse the fixture task's shared `makeTreeNode()` and exported `flattenTree()` for tree-based scenarios; test-runner setup and Makefile integration remain here.
 - Launcher integration note: cover model selection, the `c` current-session toggle, Enter/Esc, both session modes, selected-model behavior, cancellation, and launch failures rather than the superseded `R/I` bindings.
+- Creation integration note: cover direct-CLI execution and dialog behavior (title provided/blank, cancel, blank description, insertion position) as planned in the creation task; the dialog is `creation-dialog.ts`, not the launcher.
 
 ### Tests coverage for browser.ts and launcher.ts
 

@@ -142,9 +142,9 @@ function parseLaunch(args: string): PromptLaunch {
   return data;
 }
 
-async function requireAvailableModel(
+export async function requireAvailableModel(
   ctx: ExtensionCommandContext,
-  settings: LaunchSettings,
+  settings: Pick<LaunchSettings, "provider" | "modelId">,
 ) {
   const models = await ctx.modelRegistry.getAvailable();
   const model = models.find(
@@ -159,7 +159,8 @@ async function requireAvailableModel(
   return model;
 }
 
-function requireTemplate(pi: ExtensionAPI, template: string): void {
+/** Check a prompt template is loaded; throws an actionable error otherwise. */
+export function requireTemplate(pi: ExtensionAPI, template: string): void {
   if (!isTemplateLoaded(pi, template)) {
     throw new Error(
       `Prompt template "/${template}" is not loaded. ` +
@@ -230,7 +231,7 @@ export function builtPromptMessage(
  * Mirrors the Go quotePiArgument in internal/agent/pi.go:
  * Pi joins adjacent quoted segments but does not interpret backslash escapes.
  */
-function quotePiArgument(value: string): string {
+export function quotePiArgument(value: string): string {
   return "'" + value.replace(/'/g, `'"'"'`) + "'";
 }
 
@@ -238,7 +239,7 @@ function quotePiArgument(value: string): string {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function relativePath(cwd: string, absolutePath: string): string {
+export function relativePath(cwd: string, absolutePath: string): string {
   return path.relative(cwd, absolutePath);
 }
 

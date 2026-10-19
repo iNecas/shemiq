@@ -75,3 +75,4 @@ uuid: 31359542-1329-4f13-8992-0625dee1becb
 - `edit_test.go` covers explicit output paths, in-place writes, byte preservation, and snapshots. Store tests cover staging cleanup on success/rejection, unchanged rejected files, and replacement permissions.
 - `go test ./...` passes.
 - Follow-up fix during CLI task: `--after` with missing `## Tasks` or `[TBD]` placeholder now correctly rejected instead of silently ignored.
+- Follow-up fix found via the Pi creation flow: insertion verification compared existing directives by `opening.line`, so inserting before a directive-carrying sibling falsely reported "description introduces a:::shemiq directive" because the following directives' lines shifted. Directives are now matched by source text with multiset counts; regression covered by `TestCreateSubtaskInsertBeforeDirectiveSibling`.

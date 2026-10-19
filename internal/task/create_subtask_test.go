@@ -333,6 +333,60 @@ func TestCreateSubtaskPreservesContent(t *testing.T) {
 	}
 }
 
+func TestCreateSubtaskInsertBeforeDirectiveSibling(t *testing.T) {
+	root := t.TempDir()
+	original := utils.Dedent(`
+		# Feature
+		:::shemiq
+		type: top-level
+		uuid: aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee
+		:::
+
+		## Tasks
+
+		### First Task
+
+		First description.
+
+		### Second Task
+		:::shemiq
+		type: task
+		source: ./second-task.md
+		status: done
+		:::
+
+		Second description.
+		`)
+	parentPath := storeFixture(t, root, ".shemiq/tasks/feat/top-level.md", original)
+	store, err := NewStore(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The insertion shifts the Second Task directive to later lines;
+	// verification must still recognize it as existing.
+	if _, err := store.CreateSubtask(parentPath, "Middle Task", "Inserted description.", "First Task"); err != nil {
+		t.Fatalf("insert before directive sibling: %v", err)
+	}
+
+	data, err := os.ReadFile(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(original, "### Second Task",
+		"### Middle Task\n\nInserted description.\n### Second Task", 1)
+	if string(data) != want {
+		t.Fatalf("insertion changed unrelated bytes:\ngot: %q\nwant: %q", data, want)
+	}
+	refreshed, err := store.TaskByPath(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refreshed.Subtasks) != 3 || refreshed.Subtasks[1].Title != "Middle Task" ||
+		refreshed.Subtasks[2].Status != "done" {
+		t.Fatalf("unexpected refreshed subtasks: %+v", refreshed.Subtasks)
+	}
+}
+
 func TestCreateSubtaskAfterRequiresSibling(t *testing.T) {
 	for _, tc := range []struct {
 		name, tasks string

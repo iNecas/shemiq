@@ -13,12 +13,14 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 import { openBrowser, type ActionHandler } from "./browser.ts";
 import type { ActionKind } from "./controller.ts";
+import { registerCreationHandler } from "./creation.ts";
 import { dispatchLaunch, registerWorkflowHandlers } from "./workflows.ts";
 
 export default function shemiqExtension(pi: ExtensionAPI) {
   // Runtime-local handlers must not retain a pi API across reload/replacement.
   const actionHandlers = new Map<ActionKind, ActionHandler>();
   registerWorkflowHandlers(pi, (kind, handler) => actionHandlers.set(kind, handler));
+  registerCreationHandler(pi, (kind, handler) => actionHandlers.set(kind, handler));
   pi.registerCommand("shemiq", {
     description: "Open the Shemiq task browser",
     handler: async (_args, ctx) => {

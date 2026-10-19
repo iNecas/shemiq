@@ -98,6 +98,13 @@ You can also pass the `top-level.md` file directly. Omit `--title` to be prompte
 for the name. Sub-tasks are appended by default; use `--after "Existing subtask"`
 to insert after an exact title match.
 
+From Pi, the `/shemiq-new-subtask` prompt does the same with the agent picking
+the title:
+
+```
+/shemiq-new-subtask .shemiq/tasks/$MY_TASK/top-level.md "existing subtask" "What needs to be done"
+```
+
 **Refine a sub-task**
 
 Refining a sub-task will create a separate task file in the same directory with design

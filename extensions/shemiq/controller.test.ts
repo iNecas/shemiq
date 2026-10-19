@@ -56,6 +56,20 @@ describe("getLegendEntries", () => {
     ]);
   });
 
+  it("labels creation as New subtask on subtask rows", () => {
+    const [, child] = flattenTree([
+      makeTreeNode({
+        title: "Parent",
+        status: TreeStatusRefined,
+        subtasks: [{ title: "Child" }],
+      }),
+    ]);
+    const entries = getLegendEntries(child);
+    expect(entries.find(({ key }) => key === "n")?.label).toBe(
+      "New subtask",
+    );
+  });
+
   it("includes eligible actions for a row", () => {
     const [row] = flattenTree([makeTreeNode({ title: "Task" })]);
     const entries = getLegendEntries(row);

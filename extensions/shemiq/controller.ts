@@ -87,12 +87,22 @@ export function getEligibleActions(row: BrowserRow): Set<ActionKind> {
 
 /**
  * Get the legend entries for the given row (eligible actions with labels).
+ * The creation label is context-dependent: hovering a subtask offers
+ * creating a sibling subtask, anything else a new top-level task.
  */
 export function getLegendEntries(row: BrowserRow | null): ActionBinding[] {
   const eligible = row ? getEligibleActions(row) : new Set<ActionKind>();
-  return actionBindings.filter(
-    ({ action }) => action.kind === "new" || eligible.has(action.kind),
-  );
+  return actionBindings
+    .filter(({ action }) => action.kind === "new" || eligible.has(action.kind))
+    .map((binding) =>
+      binding.action.kind === "new" && isSubtaskRow(row)
+        ? { ...binding, label: "New subtask" }
+        : binding,
+    );
+}
+
+export function isSubtaskRow(row: BrowserRow | null): boolean {
+  return row !== null && row.node.type === "task";
 }
 
 // ---------------------------------------------------------------------------

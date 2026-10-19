@@ -50,7 +50,18 @@ export type ActionHandler = (
   action: BrowserAction,
   row: BrowserRow | null,
   ctx: ExtensionCommandContext,
-) => Promise<{ close?: boolean; refresh?: boolean; launch?: PromptLaunch }>;
+) => Promise<ActionHandlerResult>;
+
+export interface ActionHandlerResult {
+  /** Close the browser, optionally dispatching a launch afterwards. */
+  close?: boolean;
+  /** Reload the hierarchy while keeping the browser open. */
+  refresh?: boolean;
+  /** Prompt dispatch executed only after the browser has been disposed. */
+  launch?: PromptLaunch;
+  /** Transient message shown in the browser after the action. */
+  notify?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Browser component
@@ -264,6 +275,9 @@ class BrowserComponent implements Component {
       if (result.launch || result.close) {
         this.close(result.launch);
         return;
+      }
+      if (result.notify) {
+        this.showNotification(result.notify);
       }
       if (result.refresh) {
         await this.refresh();
