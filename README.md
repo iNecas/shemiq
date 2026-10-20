@@ -39,9 +39,9 @@ The rest of the project is just a set of quality-of-life tools that guide the wo
 This includes:
 
 - CLI
+- Pi extension
 - TUI (TBD)
-- Pi extension (TBD)
-- Other integrations
+- Other integrations (TBD)
 
 ## Installation
 
@@ -58,6 +58,22 @@ pi install "$(pwd)"
 At some point, there might be releases and packaging, let's keep it personal for now.
   
 ## Usage
+
+### Pi TUI
+
+The most straight forward way to use `shemiq` is a `/shemiq` command (mapped to
+Alt-S), that opens the current task tree and allows to perform all the operations.
+
+It provides an interactive way to:
+
+- create new top-level and sub-tasks
+- initiate refinement and implementation (in a new or the current session)
+- archive old tasks
+
+### Prompts
+
+Shemiq started just as a set of prompts and it's still possible to use it that way.
+The following overview also describes the whole functionality in more details.
 
 **Create new top-level task**
 
