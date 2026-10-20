@@ -125,7 +125,11 @@ status: refined
 - A reusable real-runtime harness (`test/pi-runtime.ts` + copied minimal `VirtualTerminal`) drives real `InteractiveMode`/session runtime, extension, dialogs, and the repo-built CLI with only scripted faux models, isolated env, and forbidden network.
 - The e2e suite (`workflows.e2e.test.ts`, 5 tests) covers launcher cancel and fresh/current launches, `/reload` → Alt+S relaunch, direct and prompt-based creation, and loading-error recovery with Refresh.
 - `make pi-test` runs the extension suite (focused + e2e), installing npm dependencies on first use; the rest of the Makefile/documentation work stays with the verification task.
-- Archiving and verification/documentation remain new.
+- Archiving is implemented and done (`extensions/shemiq/archive.ts`).
+- `a` archives the selected top-level task immediately through `shemiq archive <relative task dir>` with no confirmation: the browser stays open, refreshes, and notifies `Archived ...`; failures surface as `Action failed: ...` notifications.
+- Missing-path guard and missing-binary/CLI-error handling reuse the `creation.ts` `execFile` pattern.
+- Verified with 4 focused tests plus an e2e case (task disappears, notification shown, real CLI confirms the move); the full suite (43 tests) passes.
+- Verification/documentation remains new.
 
 ## Tasks
 
@@ -197,7 +201,7 @@ Add a standalone local npm/Vitest setup and a small keyboard-driven workflow sui
 :::shemiq
 type: task
 source: ./add-immediate-archiving.md
-status: new
+status: done
 :::
 
 Archive the selected top-level task without confirmation, keep the browser open, refresh the hierarchy, and report success or failure.

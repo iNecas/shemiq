@@ -1,7 +1,6 @@
 /** Creation checks: target routing, CLI arguments, and prompt routing. */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { execFile } from "child_process";
 import {
   buildCreationArgs,
@@ -12,9 +11,13 @@ import {
 } from "./creation.ts";
 import { showCreationDialog } from "./creation-dialog.ts";
 import type { ActionHandler } from "./browser.ts";
-import type { ActionKind } from "./controller.ts";
 import { flattenTree } from "./controller.ts";
-import { makeTreeNode, type TreeNodeDefinition } from "./test-fixtures.ts";
+import { makeTreeNode, type TreeNodeDefinition } from "./test/test-fixtures.ts";
+import {
+  captureActionHandlers,
+  makeCommandContext,
+  mockExecFileResult,
+} from "./test/test-helpers.ts";
 import { TreeStatusRefined } from "./types.ts";
 
 vi.mock("./creation-dialog.ts", () => ({
@@ -149,9 +152,10 @@ describe("creation handler", () => {
   beforeEach(() => {
     vi.mocked(showCreationDialog).mockReset();
     vi.mocked(execFile).mockReset();
-    const handlers = new Map<ActionKind, ActionHandler>();
-    registerCreationHandler(makePi(), (kind, h) => handlers.set(kind, h));
-    handler = handlers.get("new")!;
+    handler = captureActionHandlers(
+      registerCreationHandler,
+      makePi(),
+    ).get("new")!;
   });
 
   it("creates directly through the CLI when the title is filled", async () => {
@@ -165,7 +169,7 @@ describe("creation handler", () => {
       "",
     );
 
-    const result = await handler({ kind: "new" }, null, makeCtx());
+    const result = await handler({ kind: "new" }, null, makeCommandContext());
 
     expect(execFile).toHaveBeenCalledExactlyOnceWith(
       "shemiq",
@@ -185,7 +189,7 @@ describe("creation handler", () => {
       description: "Do things",
     });
 
-    const result = await handler({ kind: "new" }, subtaskRow, makeCtx());
+    const result = await handler({ kind: "new" }, subtaskRow, makeCommandContext());
 
     expect(result).toEqual({
       close: true,
@@ -203,7 +207,7 @@ describe("creation handler", () => {
 
   it("returns to the browser when the dialog is cancelled", async () => {
     vi.mocked(showCreationDialog).mockResolvedValue(null);
-    const result = await handler({ kind: "new" }, subtaskRow, makeCtx());
+    const result = await handler({ kind: "new" }, subtaskRow, makeCommandContext());
     expect(result).toEqual({});
     expect(execFile).not.toHaveBeenCalled();
   });
@@ -219,7 +223,7 @@ describe("creation handler", () => {
       "duplicate subtask title: My task",
     );
 
-    await expect(handler({ kind: "new" }, null, makeCtx())).rejects.toThrow(
+    await expect(handler({ kind: "new" }, null, makeCommandContext())).rejects.toThrow(
       "shemiq new failed: duplicate subtask title: My task",
     );
   });
@@ -233,38 +237,4 @@ function makePi() {
   return {
     getCommands: () => [{ name: "shemiq-new" }, { name: "shemiq-new-subtask" }],
   } as unknown as Parameters<typeof registerCreationHandler>[0];
-}
-
-function makeCtx() {
-  return {
-    cwd: "/project",
-    model: { provider: "test", id: "chat:latest" },
-    modelRegistry: {
-      getAvailable: () => [{ provider: "test", id: "chat:latest" }],
-    },
-  } as unknown as ExtensionCommandContext;
-}
-
-type ExecFileCallback = (
-  err: Error | null,
-  stdout: string,
-  stderr: string,
-) => void;
-
-/** The execFile shape creation.ts uses; narrower than the real overloads. */
-type ExecFileFn = (
-  command: string,
-  args: string[],
-  options: { cwd: string },
-  callback: ExecFileCallback,
-) => void;
-
-function mockExecFileResult(
-  err: Error | null,
-  stdout: string,
-  stderr: string,
-) {
-  vi.mocked(execFile as unknown as ExecFileFn).mockImplementation(
-    (_cmd, _args, _opts, cb) => cb(err, stdout, stderr),
-  );
 }

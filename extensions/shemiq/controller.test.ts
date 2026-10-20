@@ -9,7 +9,7 @@ import {
   getLegendEntries,
   resolveSelection,
 } from "./controller.ts";
-import { makeTreeNode } from "./test-fixtures.ts";
+import { makeTreeNode } from "./test/test-fixtures.ts";
 import { TreeStatusRefined, TreeStatusDone } from "./types.ts";
 
 // ---------------------------------------------------------------------------

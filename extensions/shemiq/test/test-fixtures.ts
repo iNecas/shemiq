@@ -3,7 +3,7 @@ import {
   TreeStatusNew,
   TreeTaskTypeTopLevel,
   TreeTaskTypeTask,
-} from "./types.ts";
+} from "../types.ts";
 
 export type TreeNodeDefinition = Pick<TreeNode, "title"> &
   Partial<Omit<TreeNode, "title" | "subtasks">> & {

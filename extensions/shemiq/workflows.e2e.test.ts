@@ -4,8 +4,7 @@
  * through virtual-terminal keyboard input, with only scripted faux models.
  *
  * Kept small and representative on purpose: component edge cases and
- * mocked context handling stay in the focused browser/launcher tests,
- * and archiving stays in its own task.
+ * mocked context handling stay in the focused browser/launcher tests.
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
@@ -284,6 +283,53 @@ describe("Shemiq e2e workflows", () => {
 					"A brand new task description from e2e",
 				);
 				expect(harness.screen()).not.toContain("Shemiq Tasks");
+			} finally {
+				await harness.dispose();
+			}
+		},
+		TEST_TIMEOUT,
+	);
+
+	it(
+		"archives a top-level task immediately and refreshes the browser",
+		async () => {
+			harness = await createHarness({
+				setupProject: async ({ runShemiq }) => {
+					await runShemiq([
+						"new",
+						"--title",
+						"Archive feature",
+						"Archive workflow fixture",
+					]);
+					await runShemiq([
+						"new",
+						"--title",
+						"Remaining feature",
+						"Stays after archiving",
+					]);
+				},
+			});
+			try {
+				await openBrowser("Archive feature");
+
+				// The top-level row is selected by default; "a" archives it.
+				harness.send("a");
+				await harness.waitFor("task archived and tree refreshed", () => {
+					const screen = harness.screen();
+					return (
+						screen.includes("Shemiq Tasks") &&
+						screen.includes("Archived .shemiq/tasks/archive-feature") &&
+						!screen.includes("Archive feature") &&
+						screen.includes("Remaining feature")
+					);
+				});
+
+				// Real CLI/filesystem result: the task moved to the archive.
+				const tree = JSON.parse(await harness.runShemiq(["tree", "--json"]));
+				const titles = tree.tasks.map(
+					(task: { title: string }) => task.title,
+				);
+				expect(titles).toEqual(["Remaining feature"]);
 			} finally {
 				await harness.dispose();
 			}

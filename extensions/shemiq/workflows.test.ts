@@ -9,7 +9,7 @@ import {
   type PromptLaunch,
 } from "./workflows.ts";
 import { flattenTree } from "./controller.ts";
-import { makeTreeNode, type TreeNodeDefinition } from "./test-fixtures.ts";
+import { makeTreeNode, type TreeNodeDefinition } from "./test/test-fixtures.ts";
 import { TreeStatusRefined } from "./types.ts";
 
 // ---------------------------------------------------------------------------
