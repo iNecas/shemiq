@@ -4,17 +4,27 @@ GO ?= go
 BIN := bin/shemiq
 TYGO := $(GO) tool tygo
 TREE_TYPES := extensions/shemiq/types.ts
+PI_EXT_DIR := extensions/shemiq
 
-.PHONY: help fmt test vet check generate-types check-types build install run clean
+.PHONY: help fmt test pi-test vet check generate-types check-types build install run clean
 
 help:
-	@printf 'Targets: fmt, test, vet, check, generate-types, check-types, build, install, run (ARGS="..."), clean\n'
+	@printf 'Targets: fmt, test, pi-test, vet, check, generate-types, check-types, build, install, run (ARGS="..."), clean\n'
 
 fmt:
 	$(GO) fmt ./...
 
 test:
 	$(GO) test ./...
+
+# Pi extension tests (focused + e2e). Installs dependencies on first use.
+pi-test:
+	@cd $(PI_EXT_DIR) && \
+	if [ ! -d node_modules ]; then \
+		printf 'Installing extension dependencies...\n'; \
+		npm ci; \
+	fi && \
+	npm test
 
 vet:
 	$(GO) vet ./...

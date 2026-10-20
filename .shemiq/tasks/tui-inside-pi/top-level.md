@@ -121,6 +121,10 @@ status: refined
 - A single overlay dialog collects an optional title and a required multiline description (Tab/Shift+Tab focus, Enter newline, Ctrl+S/Alt+Enter submit, Esc cancel); blank description keeps the dialog open with an inline error.
 - Title filled → direct non-interactive CLI call (`shemiq new` / `shemiq new-subtask --after`), browser stays open, refreshes, and notifies with the printed path; CLI rejections and a missing binary surface as notifications.
 - Title blank → browser closes and `/shemiq-new` or the new `/shemiq-new-subtask` prompt is dispatched in the current session through the existing `dispatchLaunch()` boundary (template and model checked before closing).
+- More end to end tests is implemented and done: standalone npm/Vitest setup under `extensions/shemiq` (`npm test`, lockfile, Pi 1.0.0 dev deps).
+- A reusable real-runtime harness (`test/pi-runtime.ts` + copied minimal `VirtualTerminal`) drives real `InteractiveMode`/session runtime, extension, dialogs, and the repo-built CLI with only scripted faux models, isolated env, and forbidden network.
+- The e2e suite (`workflows.e2e.test.ts`, 5 tests) covers launcher cancel and fresh/current launches, `/reload` → Alt+S relaunch, direct and prompt-based creation, and loading-error recovery with Refresh.
+- `make pi-test` runs the extension suite (focused + e2e), installing npm dependencies on first use; the rest of the Makefile/documentation work stays with the verification task.
 - Archiving and verification/documentation remain new.
 
 ## Tasks
@@ -181,8 +185,14 @@ It should be creating sibling tasks - on top-level, it should target new top-lev
 it should create a sub-task with the hovered task as "--after".
 
 ### More end to end tests
+:::shemiq
+type: task
+source: ./more-end-to-end-tests.md
+status: done
+:::
 
-more end to end tests
+Add a standalone local npm/Vitest setup and a small keyboard-driven workflow suite using real Pi interactive/session runtimes, a minimal copied virtual-terminal helper, faux models, and the repository-built CLI. Cover launch/reload in both session modes, direct and prompt-based creation, and loading-error recovery without real model services or pty automation.
+
 ### Add immediate archiving
 :::shemiq
 type: task
@@ -194,6 +204,7 @@ Archive the selected top-level task without confirmation, keep the browser open,
 
 - Integration note: connect the browser's Archive hook and refresh/recovery foundation; existing CLI project restrictions still apply.
 - Creation integration note: the handler-result `notify` field (applied before refresh) can carry the archive success message; the direct-CLI `execFile` pattern from `creation.ts` (including the `ENOENT` missing-binary check) is reusable for `shemiq archive`.
+- E2E integration note: archive behavior remains here; reuse the real-runtime/virtual-terminal harness from More end to end tests once the handler exists.
 
 ### Verify and document the in-Pi workflows
 :::shemiq
@@ -208,6 +219,7 @@ Add lightweight automated workflow checks, a manual Pi smoke-test checklist, and
 - Fixture integration note: reuse the fixture task's shared `makeTreeNode()` and exported `flattenTree()` for tree-based scenarios; test-runner setup and Makefile integration remain here.
 - Launcher integration note: cover model selection, the `c` current-session toggle, Enter/Esc, both session modes, selected-model behavior, cancellation, and launch failures rather than the superseded `R/I` bindings.
 - Creation integration note: cover direct-CLI execution and dialog behavior (title provided/blank, cancel, blank description, insertion position) as planned in the creation task; the dialog is `creation-dialog.ts`, not the launcher.
+- E2E integration note: More end to end tests now owns local package/test-runner setup and representative real-runtime workflows, superseding the earlier runner assignment. Reuse those checks; Makefile integration, documentation, the manual checklist, and remaining focused checks stay here.
 
 ### Tests coverage for browser.ts and launcher.ts
 
@@ -215,6 +227,7 @@ Add lightweight automated workflow checks, a manual Pi smoke-test checklist, and
 - Context-handling regression: launch → `/reload` → reopen browser → Enter to launch again, in both session modes; include real Pi replacement-runtime smoke coverage.
 - Invalidate source `pi` and command-context getters in mocks; verify model selection uses the destination runtime, browser/dialog disposal precedes dispatch, and runtime-local handlers are renewed on reload.
 - Cover duplicate confirmation, model-before-prompt ordering, cancellation, and replacement/model failures without old-session fallback or reopening. Context-handling tests remain in this subtask, not the launcher fix.
+- E2E integration note: More end to end tests now owns real-runtime launch/reload coverage in both session modes. Reuse that harness and coverage; detailed component and mocked context-handling edge cases remain here.
 
 ### Refactor hotkeys definitions
 
