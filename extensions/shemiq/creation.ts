@@ -42,8 +42,8 @@ export function registerCreationHandler(
 
     const title = input.title.trim();
     const description = input.description.trim();
-    if (!description) {
-      throw new Error("Description is required");
+    if (!title && !description) {
+      throw new Error("Title or description is required");
     }
 
     if (title) {
@@ -105,8 +105,9 @@ export function buildCreationArgs(
   title: string,
   description: string,
 ): string[] {
+  const descriptionArgs = description ? [description] : [];
   if (target.kind === "top-level") {
-    return ["new", "--title", title, description];
+    return ["new", "--title", title, ...descriptionArgs];
   }
   return [
     "new-subtask",
@@ -115,7 +116,7 @@ export function buildCreationArgs(
     title,
     "--after",
     target.afterTitle,
-    description,
+    ...descriptionArgs,
   ];
 }
 

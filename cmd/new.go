@@ -14,13 +14,13 @@ import (
 func newNewCommand(result io.Writer) *cobra.Command {
 	var title string
 	newCommand := &cobra.Command{
-		Use:   "new <description...>",
+		Use:   "new [--title \"Title\"] [description...]",
 		Short: "Create a top-level task",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			description := strings.TrimSpace(strings.Join(args, " "))
-			if description == "" {
-				return fmt.Errorf("description is required")
+			if description == "" && !cmd.Flags().Changed("title") {
+				return fmt.Errorf("description is required when title is omitted")
 			}
 			if !cmd.Flags().Changed("title") {
 				var err error

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,14 +47,46 @@ func TestNewSubtaskFlags(t *testing.T) {
 	}
 }
 
+func TestNewSubtaskWithTitleOnly(t *testing.T) {
+	for _, description := range [][]string{nil, {""}, {"  "}} {
+		for _, after := range []string{"", "First Task"} {
+			t.Run(fmt.Sprintf("description=%q/after=%s", description, after), func(t *testing.T) {
+				parentPath := newSubtaskParent(t, "top-level.md")
+				args := []string{"new-subtask", parentPath, "--title", "Title only"}
+				if after != "" {
+					args = append(args, "--after", after)
+				}
+				args = append(args, description...)
+				stdout, stderr, err := runCommand("", args...)
+				if err != nil || stdout != parentPath+"\n" || stderr != "" {
+					t.Fatalf("stdout=%q stderr=%q err=%v", stdout, stderr, err)
+				}
+				content, err := os.ReadFile(parentPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				inserted := strings.Index(string(content), "### Title only\n")
+				second := strings.Index(string(content), "### Second Task\n")
+				if inserted < 0 || (after != "" && inserted > second) || (after == "" && inserted < second) {
+					t.Fatalf("subtask missing or in wrong position: %s", content)
+				}
+				out, diag, err := runCommand("", "validate", parentPath)
+				if err != nil || out != "" || diag != "" {
+					t.Fatalf("validation: stdout=%q stderr=%q err=%v", out, diag, err)
+				}
+			})
+		}
+	}
+}
+
 func TestNewSubtaskInputErrors(t *testing.T) {
 	parentPath := newSubtaskParent(t, "top-level.md")
 	for _, tc := range []struct {
 		name, message string
 		args          []string
 	}{
-		{"missing parent", "requires at least 2 arg(s)", nil},
-		{"missing description", "requires at least 2 arg(s)", []string{parentPath}},
+		{"missing parent", "requires at least 1 arg(s)", nil},
+		{"missing description", "description is required", []string{parentPath}},
 		{"blank description", "description is required", []string{parentPath, " "}},
 		{"blank title flag", "title is required", []string{parentPath, "--title", " ", "desc"}},
 		{"missing path", "inspect parent", []string{parentPath + ".missing", "desc"}},

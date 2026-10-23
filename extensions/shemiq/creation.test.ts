@@ -183,6 +183,34 @@ describe("creation handler", () => {
     });
   });
 
+  it.each([
+    ["top-level", null, ["new", "--title", "My task"]],
+    ["subtask", subtaskRow, [
+      "new-subtask", parent.path, "--title", "My task", "--after", "Build widget",
+    ]],
+  ] as const)("creates a title-only %s through the CLI", async (_kind, row, args) => {
+    vi.mocked(showCreationDialog).mockResolvedValue({
+      title: "  My task  ",
+      description: "  ",
+    });
+    mockExecFileResult(null, "/created/path\n", "");
+
+    const result = await handler({ kind: "new" }, row, makeCommandContext());
+
+    expect(execFile).toHaveBeenCalledExactlyOnceWith(
+      "shemiq", args, { cwd: "/project" }, expect.any(Function),
+    );
+    expect(result).toEqual({ refresh: true, notify: "Created /created/path" });
+  });
+
+  it("rejects an empty title and description", async () => {
+    vi.mocked(showCreationDialog).mockResolvedValue({ title: "  ", description: "  " });
+    await expect(handler({ kind: "new" }, null, makeCommandContext())).rejects.toThrow(
+      "Title or description is required",
+    );
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
   it("closes the browser with a current-session launch when the title is blank", async () => {
     vi.mocked(showCreationDialog).mockResolvedValue({
       title: "",

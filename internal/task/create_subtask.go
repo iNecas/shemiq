@@ -9,9 +9,10 @@ import (
 
 // CreateSubtask inserts a directive-less subtask heading and
 // description into an existing top-level document's ## Tasks
-// section. Empty after appends; otherwise inserts after the
-// named sibling. parentPath must identify a Markdown file; callers resolve
-// directory arguments. Returns the edited parent's absolute path.
+// section. The description is optional. Empty after appends;
+// otherwise inserts after the named sibling. parentPath must
+// identify a Markdown file; callers resolve directory arguments.
+// Returns the edited parent's absolute path.
 func (s *Store) CreateSubtask(
 	parentPath, title, description, after string,
 ) (string, error) {
@@ -76,9 +77,6 @@ func validateSubtaskInput(parent *Task, title, description string) (string, stri
 			title)
 	}
 	description = strings.TrimSpace(description)
-	if description == "" {
-		return "", "", fmt.Errorf("description is required")
-	}
 	for _, sub := range parent.Subtasks {
 		if sub.Title == title {
 			return "", "", fmt.Errorf("duplicate subtask title: %s", title)

@@ -204,12 +204,6 @@ func TestCreateSubtaskRejectsInvalid(t *testing.T) {
 		t.Fatal("expected empty title error")
 	}
 
-	// Empty description.
-	if _, err := store.CreateSubtask(
-		parentPath, "New", "", ""); err == nil {
-		t.Fatal("expected empty description error")
-	}
-
 	// Structural rejection happens while checking the staged file.
 	if _, err := store.CreateSubtask(
 		parentPath, "New", "Description.\n\n### Extra task\n", ""); err == nil {

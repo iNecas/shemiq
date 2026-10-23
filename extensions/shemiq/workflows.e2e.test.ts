@@ -187,8 +187,47 @@ describe("Shemiq e2e workflows", () => {
 	);
 
 	it(
-		"creates a sibling subtask directly through the CLI",
+		"creates a title-only top-level task through the dialog",
 		async () => {
+			harness = await createHarness({
+				setupProject: async ({ runShemiq }) => {
+					await runShemiq(["new", "--title", "Existing feature"]);
+				},
+			});
+			try {
+				await openBrowser("Existing feature");
+				harness.send("n");
+				await harness.waitFor("creation dialog", () =>
+					harness.screen().includes("New task"),
+				);
+
+				// Both fields blank: stay in the dialog with an error.
+				harness.send("\x13");
+				await harness.waitFor("empty input error", () =>
+					harness.screen().includes("Title or description is required"),
+				);
+
+				// A title alone is sufficient to create directly.
+				harness.typeText("Title only feature");
+				harness.send("\x13");
+				await harness.waitFor("browser refreshed with new task", () => {
+					const screen = harness.screen();
+					return screen.includes("Shemiq Tasks") &&
+						screen.includes("Title only feature") && screen.includes("Created");
+				});
+				const tree = JSON.parse(await harness.runShemiq(["tree", "--json"]));
+				expect(tree.tasks.map((task: { title: string }) => task.title)).toContain("Title only feature");
+				expect(harness.prompts).toHaveLength(0);
+			} finally {
+				await harness.dispose();
+			}
+		},
+		TEST_TIMEOUT,
+	);
+
+	it.each(["", "Second subtask description from e2e"])(
+		"creates a sibling subtask directly through the CLI with description %j",
+		async (description) => {
 			harness = await createHarness({
 				setupProject: async ({ runShemiq, projectDir }) => {
 					await runShemiq([
@@ -223,8 +262,10 @@ describe("Shemiq e2e workflows", () => {
 
 				// Title filled: direct non-interactive CLI creation.
 				harness.typeText("Second subtask");
-				harness.send("\t");
-				harness.typeText("Second subtask description from e2e");
+				if (description) {
+					harness.send("\t");
+					harness.typeText(description);
+				}
 				harness.send("\x13"); // Ctrl+S submits
 
 				await harness.waitFor("browser refreshed with new task", () => {

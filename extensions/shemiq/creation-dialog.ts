@@ -1,7 +1,7 @@
 /**
  * Creation dialog: overlay with an optional one-line title input above
- * a required multiline description editor. Returns the entered values
- * or null when cancelled.
+ * a multiline description editor (required only without a title).
+ * Returns the entered values or null when cancelled.
  */
 
 import type {
@@ -28,7 +28,7 @@ import type { CreationTarget } from "./creation.ts";
 export interface CreationInput {
   /** Optional one-line title; blank defers title selection to the LLM. */
   title: string;
-  /** Required multiline description. */
+  /** Multiline description; required only when the title is blank. */
   description: string;
 }
 
@@ -133,14 +133,15 @@ class CreationDialogComponent implements Component {
   // -- Submission -----------------------------------------------------------
 
   private submit(): void {
+    const title = this.titleInput.getValue().trim();
     const description = this.editor.getExpandedText().trim();
-    if (!description) {
-      this.errorMessage = "Description is required";
+    if (!title && !description) {
+      this.errorMessage = "Title or description is required";
       this.tui.requestRender();
       return;
     }
     this.errorMessage = null;
-    this.finish({ title: this.titleInput.getValue().trim(), description });
+    this.finish({ title, description });
   }
 
   private finish(result: CreationInput | null): void {

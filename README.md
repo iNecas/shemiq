@@ -83,6 +83,11 @@ Create a top-level task with short description of your intent in `.shemiq/tasks/
 /shemiq-new a task I would like to work on
 ```
 
+From the terminal, use `shemiq new --title "Task name" [description...]`.
+The description is optional when `--title` is provided; otherwise it is required
+and the CLI prompts for the title. The Pi creation dialog likewise accepts a
+title alone, or a description with the agent picking the title.
+
 **Refine and split the top-level task**
 
 Provide more description and intial context in the `top-level.md` file and initiate
@@ -111,7 +116,8 @@ shemiq new-subtask .shemiq/tasks/$MY_TASK --title "Subtask name" "What needs to 
 ```
 
 You can also pass the `top-level.md` file directly. Omit `--title` to be prompted
-for the name. Sub-tasks are appended by default; use `--after "Existing subtask"`
+for the name. As with top-level tasks, the description is optional when
+`--title` is provided. Sub-tasks are appended by default; use `--after "Existing subtask"`
 to insert after an exact title match.
 
 From Pi, the `/shemiq-new-subtask` prompt does the same with the agent picking

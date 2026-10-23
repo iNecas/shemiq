@@ -35,13 +35,11 @@ func FindProjectDirectory(cwd string) (string, error) {
 // CreateTopLevel writes a new top-level task document,
 // discovering the project from the store's invocation
 // directory independently of the configured read scope.
-// It returns the absolute path to the created top-level.md.
+// The description is optional. It returns the absolute path
+// to the created top-level.md.
 func (s *Store) CreateTopLevel(
 	title, description string,
 ) (string, error) {
-	if strings.TrimSpace(description) == "" {
-		return "", fmt.Errorf("description is required")
-	}
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return "", fmt.Errorf("title is required")

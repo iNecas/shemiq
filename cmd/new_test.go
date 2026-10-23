@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -113,6 +114,33 @@ func TestNewWithTitleFlag(t *testing.T) {
 	}
 }
 
+func TestNewWithTitleOnly(t *testing.T) {
+	for _, description := range [][]string{nil, {""}, {"  "}} {
+		t.Run(fmt.Sprintf("description=%q", description), func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			args := append([]string{"new", "--title", "Title only"}, description...)
+			stdout, stderr, err := runCommand("", args...)
+			path := filepath.Join(dir, ".shemiq", "tasks", "title-only", "top-level.md")
+			if err != nil || stdout != path+"\n" || stderr != "" {
+				t.Fatalf("stdout=%q stderr=%q err=%v", stdout, stderr, err)
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(string(content), "# Title only\n") ||
+				!strings.Contains(string(content), "## Description\n\n\n\n## Context") {
+				t.Fatalf("unexpected document: %s", content)
+			}
+			out, diag, err := runCommand("", "validate", path)
+			if err != nil || out != "" || diag != "" {
+				t.Fatalf("validation: stdout=%q stderr=%q err=%v", out, diag, err)
+			}
+		})
+	}
+}
+
 func TestNewCreatesProject(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -142,7 +170,7 @@ func TestNewRejectsMissingInput(t *testing.T) {
 		name, input, message string
 		args                 []string
 	}{
-		{"missing description", "Unused\n", "requires at least 1 arg(s)", []string{"new"}},
+		{"missing description", "Unused\n", "description is required", []string{"new"}},
 		{"blank description", "Unused\n", "description is required", []string{"new", "  "}},
 		{"blank title", "  \n", "title is required", []string{"new", "description"}},
 		{"blank title flag", "Fallback\n", "title is required", []string{"new", "--title", "  ", "description"}},

@@ -14,14 +14,14 @@ import (
 func newNewSubtaskCommand(result io.Writer) *cobra.Command {
 	var title, after string
 	cmd := &cobra.Command{
-		Use:   "new-subtask <parent-path> [--title \"Title\"] [--after \"Sibling\"] <description...>",
+		Use:   "new-subtask <parent-path> [--title \"Title\"] [--after \"Sibling\"] [description...]",
 		Short: "Insert a subtask into a top-level task",
-		Args:  cobra.MinimumNArgs(2),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			parentArg := args[0]
 			description := strings.TrimSpace(strings.Join(args[1:], " "))
-			if description == "" {
-				return fmt.Errorf("description is required")
+			if description == "" && !cmd.Flags().Changed("title") {
+				return fmt.Errorf("description is required when title is omitted")
 			}
 
 			// Resolve parent path: directory → top-level.md.
