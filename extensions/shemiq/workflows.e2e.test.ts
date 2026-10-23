@@ -116,6 +116,93 @@ describe("Shemiq e2e workflows", () => {
 	);
 
 	it(
+		"preserves browser selection and scroll when cancelling dialogs",
+		async () => {
+			harness = await createHarness({
+				setupProject: async ({ runShemiq }) => {
+					for (let i = 1; i <= 24; i++) {
+						await runShemiq([
+							"new",
+							"--title",
+							`Scroll task ${String(i).padStart(2, "0")}`,
+						]);
+					}
+				},
+			});
+			try {
+				await openBrowser("Scroll task 01");
+
+				// Move deep enough to scroll the viewport. Plain pageUp/pageDown/
+				// home/end keys are consumed by Pi's viewport scrolling, so use "j".
+				for (let i = 0; i < 25; i++) harness.send("j");
+				await harness.waitFor("scrolled viewport", () => {
+					const screen = harness.screen();
+					return screen.includes("▲ 2 more") && screen.includes("Scroll task 24");
+				});
+				const before = harness.screen();
+
+				// Cancelling the launcher returns the exact same browser viewport.
+				await openLauncher("r");
+				harness.send("\x1b");
+				await harness.waitFor("launcher cancelled", () => {
+					const screen = harness.screen();
+					return (
+						!screen.includes("Select Model") &&
+						screen.includes("Shemiq Tasks")
+					);
+				});
+				expect(harness.screen()).toBe(before);
+
+				// Cancelling the creation dialog discards the draft and keeps the
+				// browser selection and scroll position.
+				harness.send("n");
+				await harness.waitFor("creation dialog", () =>
+					harness.screen().includes("Title:"),
+				);
+				harness.typeText("Draft title");
+				await harness.waitFor("draft typed", () =>
+					harness.screen().includes("Draft title"),
+				);
+				harness.send("\x1b");
+				await harness.waitFor("creation cancelled", () => {
+					const screen = harness.screen();
+					return (
+						!screen.includes("Title:") &&
+						screen.includes("Shemiq Tasks")
+					);
+				});
+				expect(harness.screen()).toBe(before);
+
+				// Reopening starts from fresh child state, not the cancelled draft.
+				harness.send("n");
+				await harness.waitFor("creation dialog reopened", () =>
+					harness.screen().includes("Title:"),
+				);
+				const reopened = harness.screen();
+				expect(reopened).toContain("(optional – leave blank");
+				expect(reopened).not.toContain("Draft title");
+				harness.send("\x1b");
+				await harness.waitFor("creation cancelled again", () =>
+					!harness.screen().includes("Title:"),
+				);
+
+				// Closing the browser restores keyboard control to Pi's editor.
+				harness.send("\x1b");
+				await harness.waitFor("browser closed", () =>
+					!harness.screen().includes("Shemiq Tasks"),
+				);
+				harness.typeText("editor control");
+				await harness.waitFor("editor focus restored", () =>
+					harness.screen().includes("editor control"),
+				);
+			} finally {
+				await harness.dispose();
+			}
+		},
+		TEST_TIMEOUT,
+	);
+
+	it(
 		"relaunches after /reload through Alt+S in both session modes",
 		async () => {
 			harness = await createHarness({

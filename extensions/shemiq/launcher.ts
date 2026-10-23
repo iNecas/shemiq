@@ -9,6 +9,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { Component, TUI } from "@earendil-works/pi-tui";
+import type { ExtUi } from "./ext-ui.ts";
 import {
   matchesKey,
   SelectList,
@@ -28,36 +29,33 @@ export interface LaunchSettings {
 }
 
 /**
- * Show the launcher dialog as an overlay. Returns selected settings or null
- * if the user cancels.
+ * Show the launcher dialog in place of the browser.
+ * Returns selected settings or null if the user cancels.
  */
 export async function showLauncher(
   ctx: ExtensionCommandContext,
+  extUi: ExtUi,
   actionLabel: string,
 ): Promise<LaunchSettings | null> {
   const models = await getAvailableChatModels(ctx);
 
   if (models.length === 0) {
-    return ctx.ui.custom<LaunchSettings | null>(
-      (tui, theme, _kb, done) =>
-        new EmptyModelsComponent(tui, theme, actionLabel, done),
-      { overlay: true },
+    return extUi.showDialog((finish, tui, theme) =>
+      new EmptyModelsComponent(tui, theme, actionLabel, finish),
     );
   }
 
   const currentModel = ctx.model;
 
-  return ctx.ui.custom<LaunchSettings | null>(
-    (tui, theme, _kb, done) =>
-      new LauncherComponent(
-        tui,
-        theme,
-        actionLabel,
-        models,
-        currentModel,
-        done,
-      ),
-    { overlay: true },
+  return extUi.showDialog((finish, tui, theme) =>
+    new LauncherComponent(
+      tui,
+      theme,
+      actionLabel,
+      models,
+      currentModel,
+      finish,
+    ),
   );
 }
 
@@ -76,7 +74,8 @@ async function getAvailableChatModels(
       : ctx.scopedModels.flatMap(({ model }) => {
           const available = models.find(
             (candidate) =>
-              candidate.provider === model.provider && candidate.id === model.id,
+              candidate.provider === model.provider &&
+              candidate.id === model.id,
           );
           return available ? [available] : [];
         });
@@ -206,7 +205,9 @@ class LauncherComponent implements Component {
         innerWidth,
       ),
     );
-    lines.push(padCenter(t.fg("dim", "─".repeat(Math.min(innerWidth, 50))), innerWidth));
+    lines.push(
+      padCenter(t.fg("dim", "─".repeat(Math.min(innerWidth, 50))), innerWidth),
+    );
     lines.push("");
 
     // Session mode checkbox
@@ -287,7 +288,10 @@ class EmptyModelsComponent implements Component {
     );
     lines.push(
       padCenter(
-        t.fg("muted", "Configure API keys or authenticate a provider, then try again."),
+        t.fg(
+          "muted",
+          "Configure API keys or authenticate a provider, then try again.",
+        ),
         width,
       ),
     );

@@ -8,6 +8,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { ActionHandler } from "../browser.ts";
 import type { ActionKind } from "../controller.ts";
+import type { ExtUi } from "../ext-ui.ts";
 
 // ---------------------------------------------------------------------------
 // Context double
@@ -44,6 +45,17 @@ export function captureActionHandlers(
   const handlers = new Map<ActionKind, ActionHandler>();
   setup(pi, (kind, handler) => handlers.set(kind, handler));
   return handlers;
+}
+
+// ---------------------------------------------------------------------------
+// Ext UI double
+// ---------------------------------------------------------------------------
+
+/** Ext UI double; dialogs resolve to cancellation by default. */
+export function makeExtUi(): ExtUi {
+  return {
+    showDialog: () => Promise.resolve(null),
+  };
 }
 
 // ---------------------------------------------------------------------------

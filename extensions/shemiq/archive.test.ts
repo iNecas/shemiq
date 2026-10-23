@@ -10,6 +10,7 @@ import { makeTreeNode, type TreeNodeDefinition } from "./test/test-fixtures.ts";
 import {
   captureActionHandlers,
   makeCommandContext,
+  makeExtUi,
   mockExecFileResult,
 } from "./test/test-helpers.ts";
 
@@ -38,7 +39,7 @@ describe("archive handler", () => {
     mockExecFileResult(null, "", "");
     const [row] = flattenTree([makeTreeNode(definition)]);
 
-    const result = await handler({ kind: "archive" }, row, makeCommandContext());
+    const result = await handler({ kind: "archive" }, row, makeCommandContext(), makeExtUi());
 
     expect(execFile).toHaveBeenCalledExactlyOnceWith(
       "shemiq",
@@ -57,7 +58,7 @@ describe("archive handler", () => {
     const [row] = flattenTree([makeTreeNode(definition)]);
 
     await expect(
-      handler({ kind: "archive" }, row, makeCommandContext()),
+      handler({ kind: "archive" }, row, makeCommandContext(), makeExtUi()),
     ).rejects.toThrow("shemiq archive failed: task not found");
   });
 
@@ -68,7 +69,7 @@ describe("archive handler", () => {
     const [row] = flattenTree([makeTreeNode(definition)]);
 
     await expect(
-      handler({ kind: "archive" }, row, makeCommandContext()),
+      handler({ kind: "archive" }, row, makeCommandContext(), makeExtUi()),
     ).rejects.toThrow(
       "shemiq CLI not found. Install it and make sure it is on PATH.",
     );
@@ -80,10 +81,10 @@ describe("archive handler", () => {
     ]);
 
     await expect(
-      handler({ kind: "archive" }, row, makeCommandContext()),
+      handler({ kind: "archive" }, row, makeCommandContext(), makeExtUi()),
     ).rejects.toThrow("Cannot archive: task has no document path");
     await expect(
-      handler({ kind: "archive" }, null, makeCommandContext()),
+      handler({ kind: "archive" }, null, makeCommandContext(), makeExtUi()),
     ).rejects.toThrow("Cannot archive: task has no document path");
     expect(execFile).not.toHaveBeenCalled();
   });

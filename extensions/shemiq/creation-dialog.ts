@@ -4,11 +4,9 @@
  * Returns the entered values or null when cancelled.
  */
 
-import type {
-  ExtensionCommandContext,
-  Theme,
-} from "@earendil-works/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
+import type { ExtUi } from "./ext-ui.ts";
 import {
   Editor,
   Input,
@@ -33,17 +31,15 @@ export interface CreationInput {
 }
 
 /**
- * Show the creation dialog as an overlay. Returns the entered title and
- * description, or null if the user cancels.
+ * Show the creation dialog in place of the browser.
+ * Returns the entered title and description, or null if the user cancels.
  */
-export async function showCreationDialog(
-  ctx: ExtensionCommandContext,
+export function showCreationDialog(
+  extUi: ExtUi,
   target: CreationTarget,
 ): Promise<CreationInput | null> {
-  return ctx.ui.custom<CreationInput | null>(
-    (tui, theme, _kb, done) =>
-      new CreationDialogComponent(tui, theme, target, done),
-    { overlay: true },
+  return extUi.showDialog((finish, tui, theme) =>
+    new CreationDialogComponent(tui, theme, target, finish),
   );
 }
 

@@ -10,6 +10,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { ActionKind, BrowserAction, BrowserRow } from "./controller.ts";
 import type { ActionHandler } from "./browser.ts";
+import type { ExtUi } from "./ext-ui.ts";
 import type { LaunchSettings } from "./launcher.ts";
 import * as path from "node:path";
 
@@ -51,6 +52,7 @@ function createPromptDispatcher(pi: ExtensionAPI) {
     action: BrowserAction,
     row: BrowserRow | null,
     ctx: ExtensionCommandContext,
+    extUi: ExtUi,
   ): Promise<{ launch?: PromptLaunch }> => {
     if (!row) {
       throw new Error("No task selected");
@@ -65,7 +67,11 @@ function createPromptDispatcher(pi: ExtensionAPI) {
     // Dynamic import avoids pulling pi-tui into pure-function test imports.
     const { showLauncher } = await import("./launcher.ts");
     const actionLabel = action.kind === "refine" ? "Refine" : "Implement";
-    const settings = await showLauncher(ctx, `${actionLabel}: ${row.node.title}`);
+    const settings = await showLauncher(
+      ctx,
+      extUi,
+      `${actionLabel}: ${row.node.title}`,
+    );
 
     if (!settings) {
       // User cancelled – return to browser with selection preserved.

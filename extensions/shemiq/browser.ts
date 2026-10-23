@@ -9,6 +9,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import type { PromptLaunch } from "./workflows.ts";
+import type { ExtUi } from "./ext-ui.ts";
+import { ExtUiHost } from "./ext-ui.ts";
 import {
   matchesKey,
   truncateToWidth,
@@ -37,8 +39,22 @@ export async function openBrowser(
   const cwd = ctx.cwd;
   const loadResult = await loadTree(cwd);
 
+  // Single non-overlay interaction: the host keeps the browser mounted
+  // while dialogs (launcher, creation) come and go.
   return ctx.ui.custom<PromptLaunch | undefined>((tui, theme, _kb, done) => {
-    return new BrowserComponent(tui, theme, cwd, loadResult, done, ctx, actionHandlers);
+    const host = new ExtUiHost(tui, theme, done);
+    const browser = new BrowserComponent(
+      tui,
+      theme,
+      cwd,
+      loadResult,
+      (launch) => host.close(launch),
+      ctx,
+      actionHandlers,
+      host,
+    );
+    host.setHome(browser);
+    return host;
   });
 }
 
@@ -50,6 +66,7 @@ export type ActionHandler = (
   action: BrowserAction,
   row: BrowserRow | null,
   ctx: ExtensionCommandContext,
+  extUi: ExtUi,
 ) => Promise<ActionHandlerResult>;
 
 export interface ActionHandlerResult {
@@ -74,6 +91,7 @@ class BrowserComponent implements Component {
   private done: (value: PromptLaunch | undefined) => void;
   private ctx: ExtensionCommandContext;
   private actionHandlers: ReadonlyMap<ActionKind, ActionHandler>;
+  private extUi: ExtUi;
   private isDispatching = false;
 
   private rows: BrowserRow[] = [];
@@ -101,6 +119,7 @@ class BrowserComponent implements Component {
     done: (value: PromptLaunch | undefined) => void,
     ctx: ExtensionCommandContext,
     actionHandlers: ReadonlyMap<ActionKind, ActionHandler>,
+    extUi: ExtUi,
   ) {
     this.tui = tui;
     this.theme = theme;
@@ -108,6 +127,7 @@ class BrowserComponent implements Component {
     this.done = done;
     this.ctx = ctx;
     this.actionHandlers = actionHandlers;
+    this.extUi = extUi;
     this.updateTreeState(loadResult);
   }
 
@@ -270,7 +290,7 @@ class BrowserComponent implements Component {
 
     this.isDispatching = true;
     try {
-      const result = await handler(action, row, this.ctx);
+      const result = await handler(action, row, this.ctx, this.extUi);
       if (this.isClosed) return;
       if (result.launch || result.close) {
         this.close(result.launch);

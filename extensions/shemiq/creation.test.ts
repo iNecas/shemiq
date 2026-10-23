@@ -16,6 +16,7 @@ import { makeTreeNode, type TreeNodeDefinition } from "./test/test-fixtures.ts";
 import {
   captureActionHandlers,
   makeCommandContext,
+  makeExtUi,
   mockExecFileResult,
 } from "./test/test-helpers.ts";
 import { TreeStatusRefined } from "./types.ts";
@@ -169,7 +170,7 @@ describe("creation handler", () => {
       "",
     );
 
-    const result = await handler({ kind: "new" }, null, makeCommandContext());
+    const result = await handler({ kind: "new" }, null, makeCommandContext(), makeExtUi());
 
     expect(execFile).toHaveBeenCalledExactlyOnceWith(
       "shemiq",
@@ -195,7 +196,7 @@ describe("creation handler", () => {
     });
     mockExecFileResult(null, "/created/path\n", "");
 
-    const result = await handler({ kind: "new" }, row, makeCommandContext());
+    const result = await handler({ kind: "new" }, row, makeCommandContext(), makeExtUi());
 
     expect(execFile).toHaveBeenCalledExactlyOnceWith(
       "shemiq", args, { cwd: "/project" }, expect.any(Function),
@@ -205,7 +206,7 @@ describe("creation handler", () => {
 
   it("rejects an empty title and description", async () => {
     vi.mocked(showCreationDialog).mockResolvedValue({ title: "  ", description: "  " });
-    await expect(handler({ kind: "new" }, null, makeCommandContext())).rejects.toThrow(
+    await expect(handler({ kind: "new" }, null, makeCommandContext(), makeExtUi())).rejects.toThrow(
       "Title or description is required",
     );
     expect(execFile).not.toHaveBeenCalled();
@@ -217,7 +218,7 @@ describe("creation handler", () => {
       description: "Do things",
     });
 
-    const result = await handler({ kind: "new" }, subtaskRow, makeCommandContext());
+    const result = await handler({ kind: "new" }, subtaskRow, makeCommandContext(), makeExtUi());
 
     expect(result).toEqual({
       close: true,
@@ -235,7 +236,7 @@ describe("creation handler", () => {
 
   it("returns to the browser when the dialog is cancelled", async () => {
     vi.mocked(showCreationDialog).mockResolvedValue(null);
-    const result = await handler({ kind: "new" }, subtaskRow, makeCommandContext());
+    const result = await handler({ kind: "new" }, subtaskRow, makeCommandContext(), makeExtUi());
     expect(result).toEqual({});
     expect(execFile).not.toHaveBeenCalled();
   });
@@ -251,7 +252,7 @@ describe("creation handler", () => {
       "duplicate subtask title: My task",
     );
 
-    await expect(handler({ kind: "new" }, null, makeCommandContext())).rejects.toThrow(
+    await expect(handler({ kind: "new" }, null, makeCommandContext(), makeExtUi())).rejects.toThrow(
       "shemiq new failed: duplicate subtask title: My task",
     );
   });

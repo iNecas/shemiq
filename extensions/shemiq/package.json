@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Shemiq task browser extension for Pi: development and test workspace",
   "scripts": {
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "test:fresh": "node -e \"require('fs').rmSync('node_modules/.vite',{recursive:true,force:true})\" && vitest --run"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.0.0",

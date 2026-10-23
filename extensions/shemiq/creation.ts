@@ -10,6 +10,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { ActionKind, BrowserRow } from "./controller.ts";
 import type { ActionHandler } from "./browser.ts";
+import type { ExtUi } from "./ext-ui.ts";
 import { showCreationDialog } from "./creation-dialog.ts";
 import type { PromptLaunch, PromptMessage } from "./workflows.ts";
 import {
@@ -31,10 +32,10 @@ export function registerCreationHandler(
   pi: ExtensionAPI,
   register: (kind: ActionKind, handler: ActionHandler) => void,
 ): void {
-  register("new", async (_action, row, ctx) => {
+  register("new", async (_action, row, ctx, extUi: ExtUi) => {
     const target = creationTargetFor(row);
 
-    const input = await showCreationDialog(ctx, target);
+    const input = await showCreationDialog(extUi, target);
     if (!input) {
       // Cancelled – return to the browser with selection preserved.
       return {};
