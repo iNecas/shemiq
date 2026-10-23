@@ -176,6 +176,11 @@ class LauncherComponent implements Component {
   handleInput(data: string): void {
     if (this.confirmed) return;
 
+    if (data === "q") {
+      this.cancel();
+      return;
+    }
+
     // Toggle current-session with 'c' without changing focus
     if (data === "c") {
       this.useCurrentSession = !this.useCurrentSession;
@@ -233,7 +238,7 @@ class LauncherComponent implements Component {
       `${t.bold("↑↓")} navigate`,
       `${t.bold("c")} toggle session`,
       `${t.bold("Enter")} launch`,
-      `${t.bold("Esc")} cancel`,
+      `${t.bold("Esc/q")} cancel`,
     ].join(t.fg("dim", "  │  "));
     lines.push(padCenter(legend, innerWidth));
     lines.push("");
@@ -265,7 +270,7 @@ class EmptyModelsComponent implements Component {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || matchesKey(data, "enter")) {
+    if (matchesKey(data, "escape") || data === "q" || matchesKey(data, "enter")) {
       this.done(null);
     }
   }
@@ -297,7 +302,7 @@ class EmptyModelsComponent implements Component {
     );
     lines.push("");
     lines.push(
-      padCenter(t.fg("dim", `Press ${t.bold("Esc")} to return`), width),
+      padCenter(t.fg("dim", `Press ${t.bold("Esc/q")} to return`), width),
     );
     lines.push("");
     return lines;
