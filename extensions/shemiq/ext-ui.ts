@@ -30,6 +30,12 @@ export interface ExtUi {
       theme: Theme,
     ) => Component,
   ): Promise<T | null>;
+  /**
+   * Hand the terminal to an external process for the duration of the
+   * operation: Pi's rendering and keyboard handling stop, then always
+   * restart with a forced redraw once the operation settles.
+   */
+  runInTerminal<T>(op: () => Promise<T>): Promise<T>;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +77,18 @@ export class ExtUiHost implements Component, ExtUi {
   }
 
   // -- ExtUi ----------------------------------------------------------------
+
+  async runInTerminal<T>(op: () => Promise<T>): Promise<T> {
+    // A closed host no longer owns the terminal; run the operation as-is.
+    if (this.isClosed) return op();
+    this.tui.stop({ preserveScreen: true });
+    try {
+      return await op();
+    } finally {
+      this.tui.start();
+      this.tui.requestRender(true);
+    }
+  }
 
   showDialog<T>(
     create: (

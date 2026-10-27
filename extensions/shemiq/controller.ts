@@ -23,7 +23,7 @@ export interface BrowserRow {
 // ---------------------------------------------------------------------------
 
 export type BrowserAction =
-  | { kind: "new" | "archive" }
+  | { kind: "new" | "archive" | "edit" }
   | { kind: "refine" | "implement" };
 
 export type ActionKind = BrowserAction["kind"];
@@ -39,6 +39,7 @@ export const actionBindings: ActionBinding[] = [
   { key: "r", label: "Refine", action: { kind: "refine" } },
   { key: "i", label: "Implement", action: { kind: "implement" } },
   { key: "a", label: "Archive", action: { kind: "archive" } },
+  { key: "e", label: "Edit", action: { kind: "edit" } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,11 @@ export function getEligibleActions(row: BrowserRow): Set<ActionKind> {
   const { node, ancestors } = row;
   const isTopLevel = node.type === "top-level";
   const status = node.status as TreeStatus;
+
+  // Editing only needs a document path, independent of type and status.
+  if (node.path) {
+    actions.add("edit");
+  }
 
   if (isTopLevel) {
     // Top-level tasks can always be archived

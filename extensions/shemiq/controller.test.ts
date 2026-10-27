@@ -30,7 +30,7 @@ describe("getEligibleActions", () => {
     {
       name: "document-backed top-level task",
       row: parent,
-      expected: new Set(["archive"]),
+      expected: new Set(["archive", "edit"]),
     },
     {
       name: "inline subtask with ancestors but no document path or UUID",
@@ -41,6 +41,26 @@ describe("getEligibleActions", () => {
     const actions = getEligibleActions(row);
     expect(actions).toBeInstanceOf(Set);
     expect(actions).toEqual(expected);
+  });
+
+  it("offers edit for any row with a path, independent of status", () => {
+    const [parent, doneChild] = flattenTree([
+      makeTreeNode({
+        title: "Parent",
+        status: TreeStatusDone,
+        path: "/project/.shemiq/tasks/parent/top-level.md",
+        subtasks: [
+          {
+            title: "Done child",
+            status: TreeStatusDone,
+            path: "/project/.shemiq/tasks/parent/done-child.md",
+          },
+        ],
+      }),
+    ]);
+
+    expect(getEligibleActions(parent)).toContain("edit");
+    expect(getEligibleActions(doneChild)).toEqual(new Set(["edit"]));
   });
 });
 
@@ -78,6 +98,25 @@ describe("getLegendEntries", () => {
       { key: "r", action: { kind: "refine" } },
       { key: "a", action: { kind: "archive" } },
     ]);
+  });
+
+  it("shows the edit legend entry only for rows with a path", () => {
+    const [withPath, pathless] = flattenTree([
+      makeTreeNode({
+        title: "With path",
+        path: "/project/.shemiq/tasks/with-path/top-level.md",
+        subtasks: [
+          { title: "Pathless child" },
+          {
+            title: "Pathed child",
+            path: "/project/.shemiq/tasks/with-path/child.md",
+          },
+        ],
+      }),
+    ]);
+
+    expect(getLegendEntries(withPath).map(({ key }) => key)).toContain("e");
+    expect(getLegendEntries(pathless).map(({ key }) => key)).not.toContain("e");
   });
 
   it("keeps only global creation available for completed subtasks", () => {

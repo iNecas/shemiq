@@ -1,6 +1,6 @@
 /** Ext UI host lifecycle: switching, completion idempotency, and closure. */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import { ExtUiHost } from "./ext-ui.ts";
@@ -33,12 +33,15 @@ class TestDialog implements Component {
 interface HostFixture {
 	host: ExtUiHost;
 	home: TestDialog;
+	tui: TUI;
 	doneResults: unknown[];
 }
 
 function makeHost(): HostFixture {
 	const tui = {
-		requestRender: () => {},
+		requestRender: vi.fn(),
+		start: vi.fn(),
+		stop: vi.fn(),
 	} as unknown as TUI;
 	const doneResults: unknown[] = [];
 	const host = new ExtUiHost(tui, {} as Theme, (result) =>
@@ -46,7 +49,7 @@ function makeHost(): HostFixture {
 	);
 	const home = new TestDialog(["home"]);
 	host.setHome(home);
-	return { host, home, doneResults };
+	return { host, home, tui, doneResults };
 }
 
 // ---------------------------------------------------------------------------
@@ -54,6 +57,37 @@ function makeHost(): HostFixture {
 // ---------------------------------------------------------------------------
 
 describe("ExtUiHost", () => {
+	it("hands the terminal to an operation and restarts with a forced redraw", async () => {
+		const { host, tui } = makeHost();
+		let stoppedDuringOp = false;
+
+		const result = await host.runInTerminal(async () => {
+			stoppedDuringOp = vi.mocked(tui.stop).mock.calls.length === 1;
+			return "edited";
+		});
+
+		expect(result).toBe("edited");
+		expect(stoppedDuringOp).toBe(true);
+		expect(tui.stop).toHaveBeenCalledExactlyOnceWith({ preserveScreen: true });
+		expect(tui.start).toHaveBeenCalledOnce();
+		// The forced redraw comes after the restart.
+		expect(tui.requestRender).toHaveBeenLastCalledWith(true);
+	});
+
+	it("restarts the terminal even when the operation fails", async () => {
+		const { host, tui } = makeHost();
+
+		await expect(
+			host.runInTerminal(async () => {
+				throw new Error("editor crashed");
+			}),
+		).rejects.toThrow("editor crashed");
+
+		expect(tui.stop).toHaveBeenCalledOnce();
+		expect(tui.start).toHaveBeenCalledOnce();
+		expect(tui.requestRender).toHaveBeenLastCalledWith(true);
+	});
+
 	it("shows a dialog and returns to the retained home on finish", async () => {
 		const { host, home } = makeHost();
 		expect(host.render(80)).toEqual(["home"]);

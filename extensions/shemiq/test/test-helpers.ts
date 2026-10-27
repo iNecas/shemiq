@@ -51,10 +51,11 @@ export function captureActionHandlers(
 // Ext UI double
 // ---------------------------------------------------------------------------
 
-/** Ext UI double; dialogs resolve to cancellation by default. */
+/** Ext UI double; dialogs resolve to cancellation, terminal ops run inline. */
 export function makeExtUi(): ExtUi {
   return {
     showDialog: () => Promise.resolve(null),
+    runInTerminal: (op: () => Promise<unknown>) => op(),
   };
 }
 

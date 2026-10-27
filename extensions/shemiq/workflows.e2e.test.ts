@@ -8,6 +8,8 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { readFile, writeFile } from "node:fs/promises";
+import * as path from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { buildShemiqBinary, createHarness, type E2EHarness } from "./test/pi-runtime.ts";
 
@@ -459,6 +461,101 @@ describe("Shemiq e2e workflows", () => {
 				);
 				expect(titles).toEqual(["Remaining feature"]);
 			} finally {
+				await harness.dispose();
+			}
+		},
+		TEST_TIMEOUT,
+	);
+
+	it(
+		"edits a task document through $EDITOR and returns to the browser",
+		async () => {
+			harness = await createHarness({
+				setupProject: async ({ runShemiq, projectDir }) => {
+					await runShemiq([
+						"new",
+						"--title",
+						"Edit feature",
+						"Edit workflow fixture",
+					]);
+					// Reference a not-yet-existing subtask document: the row gets
+					// a path and is editable even though the file is missing.
+					const topLevel = path.join(
+						projectDir,
+						".shemiq/tasks/edit-feature/top-level.md",
+					);
+					const parent = await readFile(topLevel, "utf8");
+					await writeFile(
+						topLevel,
+						parent.replace(
+							"## Tasks\n\n[TBD]",
+							"## Tasks\n\n### Missing task\n" +
+								":::shemiq\n" +
+								"type: task\n" +
+								"source: ./edit-me.md\n" +
+								"status: new\n" +
+								":::\n\n" +
+								"Waiting for the editor.",
+						),
+					);
+					// Fake editor: creates the missing task document and exits.
+					await writeFile(
+						path.join(projectDir, "fake editor.sh"),
+						[
+							"#!/bin/sh",
+							`cat > "$1" <<'EOF'`,
+							"# Edited task",
+							":::shemiq",
+							"type: task",
+							"parent: ./top-level.md",
+							"uuid: 11111111-2222-4333-8444-555555555555",
+							"status: new",
+							":::",
+							"",
+							"## Context",
+							"",
+							"Created by the fake editor.",
+							"EOF",
+						].join("\n"),
+					);
+				},
+			});
+			// $EDITOR is an executable plus arguments, with a quoted path
+			// containing a space; the task file is appended as one argument.
+			process.env.EDITOR = `sh '${path.join(
+				harness.projectDir,
+				"fake editor.sh",
+			)}'`;
+			try {
+				await openBrowser("Edit feature");
+
+				// Hover the subtask: the edit legend entry appears with a path.
+				harness.send("j");
+				await harness.waitFor("edit legend on subtask row", () =>
+					harness.screen().includes("e Edit"),
+				);
+				expect(harness.screen()).toContain("Missing task");
+
+				harness.send("e");
+				await harness.waitFor("browser refreshed with edited task", () => {
+					const screen = harness.screen();
+				return (
+						screen.includes("Shemiq Tasks") &&
+						screen.includes("Edited task") &&
+							!screen.includes("Missing task")
+					);
+				});
+
+					// The selection stays on the edited subtask row.
+					expect(harness.screen()).toContain("❯   Edited task");
+
+				// The fake editor created the previously missing document.
+				const edited = await harness.readProjectFile(
+					".shemiq/tasks/edit-feature/edit-me.md",
+				);
+				expect(edited).toContain("# Edited task");
+			} finally {
+				delete process.env.EDITOR;
 				await harness.dispose();
 			}
 		},
