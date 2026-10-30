@@ -15,11 +15,10 @@ import (
 
 func TestRefineLaunchAndSelection(t *testing.T) {
 	root := t.TempDir()
-	newPath := refineFixture(t, root, "tasks", "first", "First", "", "")
-	otherName := filepath.Join(filepath.Dir(newPath), "other.MARKDOWN")
-	if err := os.WriteFile(otherName, []byte(readTestFile(t, newPath)), 0644); err != nil {
-		t.Fatal(err)
-	}
+	refineFixture(t, root, "tasks", "first", "First", "", "")
+	// A second task directory with the same title: duplicate
+	// titles are distinguishable by explicit path selection.
+	otherName := refineFixture(t, root, "tasks", "other", "First", "", "")
 	refineFixture(t, root, "tasks", "done", "Done", "status: done\n", "")
 	subtasks := utils.Dedent(`
 		### Already refined

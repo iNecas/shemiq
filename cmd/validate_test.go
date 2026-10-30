@@ -27,7 +27,8 @@ func TestValidateScopeAndDuplicates(t *testing.T) {
 	a := writeTestMarkdown(t,
 		filepath.Join(dir, "a", "top-level.md"), withUUID)
 	b := writeTestMarkdown(t,
-		filepath.Join(dir, "nested", "b.md"), withUUID)
+		filepath.Join(dir, "nested", "top-level.md"), withUUID)
+	// Unrelated Markdown is not discovered or validated.
 	plain := writeTestMarkdown(t,
 		filepath.Join(dir, "plain.md"),
 		utils.Dedent(`
@@ -59,7 +60,7 @@ func TestValidateScopeAndDuplicates(t *testing.T) {
 		out, diag, err := runCommand("", args...)
 		if err == nil || out != "" ||
 			!strings.Contains(diag, "duplicate uuid") ||
-			!strings.Contains(diag, plain+":1: missing primary task heading/directive pair") ||
+			strings.Contains(diag, plain) ||
 			strings.Contains(diag, "Error:") ||
 			strings.Contains(diag, "Usage:") {
 			t.Fatalf("validate %v: out=%q diag=%q err=%v",

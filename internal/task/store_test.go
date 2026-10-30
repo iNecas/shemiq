@@ -1,12 +1,15 @@
 package task
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/iNecas/shemiq/internal/utils"
 )
+
+const storeUUID = "12345678-1234-4234-8234-123456789abc"
 
 func TestStoreScopeAndSnapshots(t *testing.T) {
 	root := t.TempDir()
@@ -144,16 +147,25 @@ func TestStoreScopeAndSnapshots(t *testing.T) {
 func TestStoreExplicitScopes(t *testing.T) {
 	root := t.TempDir()
 	selected := filepath.Join(root, "documents")
-	a := storeFixture(t, selected, "a.MARKDOWN",
+	// Directory discovery recognizes only top-level.md files.
+	a := storeFixture(t, selected, "a/top-level.md",
 		utils.Dedent(`
 		# A
 		:::shemiq
 		type: top-level
 		:::
 		`))
-	storeFixture(t, selected, "nested/b.MD",
+	b := storeFixture(t, selected, "nested/top-level.md",
 		utils.Dedent(`
 		# B
+		:::shemiq
+		type: top-level
+		:::
+		`))
+	// Arbitrary names require explicit selection or references.
+	storeFixture(t, selected, "a.MARKDOWN",
+		utils.Dedent(`
+		# Explicit
 		:::shemiq
 		type: top-level
 		:::
@@ -183,7 +195,8 @@ func TestStoreExplicitScopes(t *testing.T) {
 	}
 	tasks, err := store.TopLevelTasks()
 	if err != nil || len(tasks) != 2 ||
-		tasks[0].Path != a || tasks[1].Title != "B" {
+		tasks[0].Path != a || tasks[1].Path != b ||
+		tasks[1].Title != "B" {
 		t.Fatalf(
 			"explicit directory: tasks=%+v err=%v",
 			tasks, err)
@@ -226,6 +239,111 @@ func TestStoreExplicitScopes(t *testing.T) {
 	}
 }
 
+// Directory scopes discover only top-level.md entry points; other
+// Markdown joins the store through explicit selection or references.
+func TestStoreEntryPointDiscovery(t *testing.T) {
+	root := t.TempDir()
+	active := filepath.Join(root, ".shemiq", "tasks")
+	entry := storeFixture(t, active, "example/top-level.md",
+		fmt.Sprintf(utils.Dedent(`
+		# Example
+		:::shemiq
+		type: top-level
+		uuid: %s
+		:::
+		## Tasks
+		### Child
+		:::shemiq
+		type: task
+		source: ./child.md
+		:::
+		`), storeUUID))
+	child := storeFixture(t, active, "example/child.md",
+		fmt.Sprintf(utils.Dedent(`
+		# Child
+		:::shemiq
+		type: task
+		parent: ./top-level.md
+		uuid: %s
+		:::
+		## Tasks
+		### Grandchild
+		:::shemiq
+		type: task
+		source: ./grandchild.md
+		:::
+		`), "87654321-4321-4321-8321-abcdefabcdef"))
+	grandchild := storeFixture(t, active, "example/grandchild.md",
+		utils.Dedent(`
+		# Grandchild
+		:::shemiq
+		type: task
+		parent: ./child.md
+		uuid: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+		:::
+		`))
+	// Unrelated Markdown with arbitrary names, including a
+	// valid top-level directive, must not be discovered.
+	plan := storeFixture(t, active, "other/plan.md",
+		fmt.Sprintf(utils.Dedent(`
+		# Plan
+		:::shemiq
+		type: top-level
+		uuid: %s
+		:::
+		`), "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"))
+	notes := storeFixture(t, active, "example/notes.md",
+		utils.Dedent(`
+		# Notes
+
+		Plain supporting content.
+		`))
+
+	store, err := NewStore(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := store.TopLevelTasks()
+	if err != nil || len(tasks) != 1 ||
+		tasks[0].Path != entry {
+		t.Fatalf("directory discovery: tasks=%+v err=%v",
+			tasks, err)
+	}
+	// Referenced documents are reachable transitively.
+	for _, path := range []string{child, grandchild} {
+		if _, err := store.TaskByPath(path); err != nil {
+			t.Fatalf("referenced %s: %v", path, err)
+		}
+	}
+	// Explicit queries opt files in without widening discovery.
+	planTask, err := store.TaskByPath(plan)
+	if err != nil || planTask.Title != "Plan" {
+		t.Fatalf("opt-in query: task=%+v err=%v", planTask, err)
+	}
+	notesTask, err := store.TaskByPath(notes)
+	if err != nil || len(notesTask.Issues) == 0 {
+		t.Fatalf(
+			"opt-in keeps strict parsing: task=%+v err=%v",
+			notesTask, err)
+	}
+	tasks, err = store.TopLevelTasks()
+	if err != nil || len(tasks) != 1 ||
+		tasks[0].Path != entry {
+		t.Fatalf("queries widened discovery: tasks=%+v err=%v",
+			tasks, err)
+	}
+	// An arbitrary explicitly selected file is an entry point.
+	fileStore, err := NewStore(root, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err = fileStore.TopLevelTasks()
+	if err != nil || len(tasks) != 1 ||
+		tasks[0].Path != plan {
+		t.Fatalf("explicit file: tasks=%+v err=%v", tasks, err)
+	}
+}
+
 // storeFixture writes a test file and returns its absolute
 // path. Shared across store, task, create, and validate tests.
 func storeFixture(
@@ -243,4 +361,3 @@ func storeFixture(
 	}
 	return path
 }
-

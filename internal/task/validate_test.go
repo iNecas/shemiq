@@ -19,14 +19,14 @@ func TestStoreValidateHierarchyAndStructure(t *testing.T) {
 	}{
 		{
 			name: "missing_directive", message: "missing heading-adjacent task directive", count: 1, line: 1,
-			files: map[string]string{"structure.md": utils.Dedent(`
+			files: map[string]string{"top-level.md": utils.Dedent(`
 				# First
 				Prose prevents adjacency.
 				`)},
 		},
 		{
 			name: "empty_title", message: "empty task title", count: 1, line: 1,
-			files: map[string]string{"empty.md": utils.Dedent(`
+			files: map[string]string{"top-level.md": utils.Dedent(`
 				#
 				:::shemiq
 				type: task
@@ -36,7 +36,7 @@ func TestStoreValidateHierarchyAndStructure(t *testing.T) {
 		},
 		{
 			name: "source_on_primary", message: "source is not permitted", count: 1, line: 4,
-			files: map[string]string{"bad.md": utils.Dedent(`
+			files: map[string]string{"top-level.md": utils.Dedent(`
 				# Title
 				:::shemiq
 				type: task
@@ -46,7 +46,7 @@ func TestStoreValidateHierarchyAndStructure(t *testing.T) {
 		},
 		{
 			name: "parent_on_entry", message: "parent is not permitted", count: 1, line: 11,
-			files: map[string]string{"top.md": utils.Dedent(`
+			files: map[string]string{"top-level.md": utils.Dedent(`
 				# Top
 				:::shemiq
 				type: top-level
@@ -57,7 +57,7 @@ func TestStoreValidateHierarchyAndStructure(t *testing.T) {
 				:::shemiq
 				type: task
 				uuid: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
-				parent: ./top.md
+				parent: ./top-level.md
 				:::
 				`)},
 		},
@@ -65,51 +65,51 @@ func TestStoreValidateHierarchyAndStructure(t *testing.T) {
 			// No roots; C -> B must not become a spurious cycle after A <-> B.
 			name: "cycle", message: "child-reference cycle", count: 1, line: 11,
 			files: map[string]string{
-				"a.md": utils.Dedent(`
+				"a/top-level.md": utils.Dedent(`
 					# A
 					:::shemiq
 					type: top-level
-					parent: ./b.md
+					parent: ../b/top-level.md
 					uuid: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
 					:::
 					## Tasks
 					### B
 					:::shemiq
 					type: task
-					source: ./b.md
+					source: ../b/top-level.md
 					:::
 					### C
 					:::shemiq
 					type: task
-					source: ./c.md
+					source: ../c/top-level.md
 					:::
 					`),
-				"b.md": utils.Dedent(`
+				"b/top-level.md": utils.Dedent(`
 					# B
 					:::shemiq
 					type: task
-					parent: ./a.md
+					parent: ../a/top-level.md
 					uuid: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
 					:::
 					## Tasks
 					### A
 					:::shemiq
 					type: task
-					source: ./a.md
+					source: ../a/top-level.md
 					:::
 					`),
-				"c.md": utils.Dedent(`
+				"c/top-level.md": utils.Dedent(`
 					# C
 					:::shemiq
 					type: task
-					parent: ./a.md
+					parent: ../a/top-level.md
 					uuid: cccccccc-cccc-4ccc-8ccc-cccccccccccc
 					:::
 					## Tasks
 					### B
 					:::shemiq
 					type: task
-					source: ./b.md
+					source: ../b/top-level.md
 					:::
 					`),
 			},
@@ -117,7 +117,7 @@ func TestStoreValidateHierarchyAndStructure(t *testing.T) {
 		{
 			name: "multiple_owners", message: "multiple owning parents", count: 2, line: 10,
 			files: map[string]string{
-				"p1.md": utils.Dedent(`
+				"p1/top-level.md": utils.Dedent(`
 					# Parent 1
 					:::shemiq
 					type: top-level
@@ -127,10 +127,10 @@ func TestStoreValidateHierarchyAndStructure(t *testing.T) {
 					### Child
 					:::shemiq
 					type: task
-					source: ./child.md
+					source: ../child.md
 					:::
 					`),
-				"p2.md": utils.Dedent(`
+				"p2/top-level.md": utils.Dedent(`
 					# Parent 2
 					:::shemiq
 					type: top-level
@@ -140,14 +140,14 @@ func TestStoreValidateHierarchyAndStructure(t *testing.T) {
 					### Child
 					:::shemiq
 					type: task
-					source: ./child.md
+					source: ../child.md
 					:::
 					`),
 				"child.md": utils.Dedent(`
 					# Child
 					:::shemiq
 					type: task
-					parent: ./p1.md
+					parent: ./p1/top-level.md
 					uuid: cccccccc-cccc-4ccc-8ccc-cccccccccccc
 					:::
 					`),

@@ -226,7 +226,7 @@ func TestStoreTreeRejectsFileScope(t *testing.T) {
 // any tree, return located findings, and leave the original files untouched.
 func TestStoreTreeRunsFullValidation(t *testing.T) {
 	root := t.TempDir()
-	parent := storeFixture(t, root, "selected/top.md", utils.Dedent(`
+	parent := storeFixture(t, root, "selected/top-level.md", utils.Dedent(`
 		# Parent
 		:::shemiq
 		type: top-level
@@ -242,7 +242,7 @@ func TestStoreTreeRunsFullValidation(t *testing.T) {
 	child := storeFixture(t, root, "external/child.md", utils.Dedent(`
 		# Child
 		:::shemiq
-		parent: ../selected/top.md
+		parent: ../selected/top-level.md
 		:::
 		`))
 	before := make(map[string][]byte)

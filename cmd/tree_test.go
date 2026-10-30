@@ -165,7 +165,7 @@ func TestTreeEmptyDirectory(t *testing.T) {
 
 func TestTreeValidationError(t *testing.T) {
 	dir := t.TempDir()
-	writeTestMarkdown(t, filepath.Join(dir, "bad.md"),
+	writeTestMarkdown(t, filepath.Join(dir, "top-level.md"),
 		utils.Dedent(`
 		# Bad
 		:::shemiq

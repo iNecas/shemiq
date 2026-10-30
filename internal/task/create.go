@@ -113,6 +113,8 @@ func (s *Store) cacheCreated(path string) error {
 	if _, err := s.loadTask(resolved, false); err != nil {
 		return err
 	}
+	// A created top-level.md joins the discovered set.
+	s.discovered[resolved] = true
 	return nil
 }
 
